@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>kanpan 看盤</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #0a0e1f; color: #d7dbe6;
+    font: 14px/1.6 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; background: #0d1226; border-bottom: 1px solid #2a3a66;
+  }
+  header h1 { font-size: 16px; color: #7aa2ff; margin: 0 12px 0 0; }
+  header input {
+    width: 110px; padding: 6px 10px; border-radius: 6px;
+    border: 1px solid #3a4a7a; background: #141a33; color: #e6eaf5; font-size: 14px;
+  }
+  header select, header button {
+    padding: 6px 10px; border-radius: 6px; border: 1px solid #3a4a7a;
+    background: #141a33; color: #e6eaf5; cursor: pointer; font-size: 13px;
+  }
+  header button { background: #2a3a7a; font-weight: 700; }
+  header button:hover { background: #3a4a9a; }
+  header .hint { color: #6b7596; font-size: 12px; }
+  main { display: flex; height: calc(100vh - 53px); }
+  #chart { flex: 1; min-width: 0; }
+  #chart > div { height: 100%; }
+  aside {
+    width: 320px; flex: 0 0 320px; overflow-y: auto;
+    background: #0d1226; border-left: 3px solid #3a4a7a; padding: 12px 14px 30px;
+    font-size: 13px;
+  }
+  aside::-webkit-scrollbar { width: 8px; }
+  aside::-webkit-scrollbar-thumb { background: #2a3a66; border-radius: 4px; }
+  .kp-hr { border-top: 1px solid #2a3a66; margin: 9px 0; }
+  .kp-score {
+    font-size: 17px; padding: 9px 11px; border-radius: 6px;
+    background: rgba(40,50,90,.55); border-left: 3px solid #7aa2ff;
+  }
+  .kp-score b { font-size: 24px; }
+  .good  { border-left-color: #5ff08c; } .good b  { color: #5ff08c; }
+  .mid   { border-left-color: #f4b400; } .mid b   { color: #f4b400; }
+  .weak  { border-left-color: #ff7a7a; } .weak b  { color: #ff7a7a; }
+  .sec { color: #7aa2ff; font-weight: 700; margin: 5px 0 2px; }
+  .row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
+  .row span:first-child { color: #8893ad; flex: 0 0 auto; }
+  .row span:last-child { color: #e6eaf5; text-align: right; }
+  .note { color: #6b7596; font-size: 11px; margin: 2px 0; }
+  .comment { background: rgba(40,50,90,.4); border-radius: 5px; padding: 8px 10px; }
+  .buy { color: #ff8a8a; } .sell { color: #6fd08c; }
+  .live { color: #5ff08c; font-size: 11px; font-weight: 700; }
+  .static { color: #8893ad; font-size: 11px; }
+  .err { color: #ff7a7a; }
+  .foot { color: #6b7596; font-size: 11px; font-style: italic; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>kanpan 看盤</h1>
+  <input id="sid" placeholder="代號 如 2330" value="2330">
+  <select id="mkt">
+    <option value="TWSE">上市</option>
+    <option value="TPEX">上櫃</option>
+  </select>
+  <button id="go">看盤</button>
+  <span class="hint">圖表 = TradingView 官方 widget｜右側 = kanpan 分析（描述非建議）</span>
+</header>
+<main>
+  <div id="chart"></div>
+  <aside id="panel"><div class="note">輸入代號按「看盤」</div></aside>
+</main>
+
+<script>
+const API = "http://127.0.0.1:8771/panel";
+
+// ---- TradingView Advanced Chart widget（官方嵌入,資料 TV 自帶）----
+function loadChart(sid, mkt) {
+  const box = document.getElementById("chart");
+  box.innerHTML = "<div id='tv_box'></div>";
+  const s = document.createElement("script");
+  s.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
+  s.async = true;
+  s.innerHTML = JSON.stringify({
+    autosize: true,
+    symbol: `${mkt}:${sid}`,
+    interval: "D",
+    timezone: "Asia/Taipei",
+    theme: "dark",
+    style: "1",
+    locale: "zh_TW",
+    hide_side_toolbar: false,
+    allow_symbol_change: false,
+    studies: ["MASimple@tv-basicstudies"],
+    support_host: "https://www.tradingview.com"
+  });
+  document.getElementById("tv_box").appendChild(s);
+}
+
+// ---- kanpan 面板 ----
+function scoreCls(v) { return v >= 70 ? "good" : v >= 50 ? "mid" : "weak"; }
+
+function instRow(name, x) {
+  const cls = x.net > 0 ? "buy" : x.net < 0 ? "sell" : "";
+  let t = (x.net > 0 ? "+" : "") + x.net.toLocaleString() + " 張";
+  if (x.streak > 1) t += `（連買${x.streak}日）`;
+  else if (x.streak < -1) t += `（連賣${-x.streak}日）`;
+  return `<div class="row"><span>${name}</span><span class="${cls}">${t}</span></div>`;
+}
+
+async function loadPanel(sid) {
+  const el = document.getElementById("panel");
+  el.innerHTML = `<div class="note">分析中…</div>`;
+  let d;
+  try {
+    d = await (await fetch(`${API}?sid=${sid}`)).json();
+  } catch (e) {
+    el.innerHTML = `<div class="err">連不上本機後端</div>
+      <div class="note">先跑：python api.py（kanpan 資料夾）</div>`;
+    return;
+  }
+  if (d.error) { el.innerHTML = `<div class="err">${d.error}</div>`; return; }
+
+  const live = d.live ? `<span class="live">● 即時 ${d.live_time}</span>`
+                      : `<span class="static">收盤</span>`;
+  const b = d.hist_bucket;
+  const hist = (b && b.n > 0) ? `
+    <div class="sec">歷史統計（分數 ${b.lo}~${b.hi} 的過去表現）</div>
+    <div class="row"><span>樣本數</span><span>${b.n.toLocaleString()}</span></div>
+    <div class="row"><span>5/10/20日勝率</span><span>${b.win5}% / ${b.win10}% / ${b.win20}%</span></div>
+    <div class="row"><span>平均報酬(20日)</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
+    <div class="row"><span>最大回撤</span><span class="weak">${b.mdd}%</span></div>
+    <div class="note">${b.period}，歷史統計非預測</div>`
+    : `<div class="note">歷史統計未產生</div>`;
+  const posTag = d.pos_pct == null ? "" :
+    d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
+  const inst = d.inst ? `
+    <div class="kp-hr"></div>
+    <div class="sec">法人買賣超（${d.inst.date}）</div>
+    ${instRow("外資", d.inst.foreign)}
+    ${instRow("投信", d.inst.trust)}
+    ${instRow("自營", d.inst.dealer)}
+    <div class="note">描述現況，非進場訊號</div>` : "";
+
+  el.innerHTML = `
+    <div><b style="font-size:15px">${d.sid}</b>　${live}</div>
+    <div class="kp-hr"></div>
+    <div class="kp-score ${scoreCls(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="note"> /100</span></div>
+    <div class="note">趨勢40%+動能20%+量能20%+位置20%</div>
+    <div class="note">${d.date}　收盤/現價 ${d.close}</div>
+    <div class="kp-hr"></div>
+    ${hist}
+    <div class="kp-hr"></div>
+    <div class="row"><span>趨勢分數</span><span>${d.trend_score}/100（均線結構）</span></div>
+    <div class="row"><span>結構</span><span><b>${d.structure}</b></span></div>
+    <div class="row"><span>週線</span><span>${d.weekly ?? "—"}</span></div>
+    <div class="row"><span>日週共振</span><span>${d.resonance ?? "—"}</span></div>
+    <div class="row"><span>動能</span><span>RSI ${d.rsi ?? "—"}　${d.momentum}</span></div>
+    <div class="row"><span>量能</span><span>${d.vol_ratio ?? "—"}倍 ${d.vol_tag}</span></div>
+    <div class="row"><span>量堆積</span><span>${d.skew_tag ?? "—"}</span></div>
+    <div class="row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
+    ${d.vah ? `<div class="row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>
+    <div class="note">參考價位非買賣建議</div>` : ""}
+    ${d.vol_note ? `<div class="note">${d.vol_note}</div>` : ""}
+    ${inst}
+    <div class="kp-hr"></div>
+    <div class="sec">評語</div>
+    <div class="comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>
+    <div class="foot">${d.disclaimer}</div>`;
+}
+
+function go() {
+  const sid = document.getElementById("sid").value.trim().toUpperCase();
+  const mkt = document.getElementById("mkt").value;
+  if (!/^[0-9]{4,6}[A-Z]?$/.test(sid)) { alert("代號格式：2330 / 0050"); return; }
+  loadChart(sid, mkt);
+  loadPanel(sid);
+}
+document.getElementById("go").onclick = go;
+document.getElementById("sid").addEventListener("keydown", e => {
+  if (e.key === "Enter") go();
+});
+go();   // 開頁先載預設 2330
+</script>
+</body>
+</html>
