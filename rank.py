@@ -16,11 +16,35 @@ import collections
 import gzip
 import json
 import os
+import ssl
+import urllib.request
 
-from core import compute_panel
+from core import compute_panel, _find_finmind_token
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
+NAMES = os.path.join(HERE, "cache", "names.json")
+
+
+def load_names() -> dict:
+    """代號→股名。先讀本地 cache/names.json，沒有就抓 FinMind 全市場股名存起來。"""
+    if os.path.exists(NAMES):
+        try:
+            return json.load(open(NAMES, encoding="utf-8"))
+        except Exception:
+            pass
+    tok = _find_finmind_token()
+    url = f"https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInfo&token={tok}"
+    try:
+        r = json.load(urllib.request.urlopen(url, timeout=40,
+                                             context=ssl.create_default_context()))
+        m = {x["stock_id"]: x["stock_name"] for x in r.get("data", [])}
+    except Exception:
+        return {}
+    if m:
+        os.makedirs(os.path.dirname(NAMES), exist_ok=True)
+        json.dump(m, open(NAMES, "w", encoding="utf-8"), ensure_ascii=False)
+    return m
 
 
 def scan() -> list:
@@ -52,6 +76,7 @@ def main():
     a = ap.parse_args()
 
     rows = scan()
+    names = load_names()
     vals = [s for _, s, _, _ in rows]
     print(f"\n掃描 {len(vals)} 檔（上市 cache）")
 
@@ -65,9 +90,10 @@ def main():
     sel = [r for r in rows if r[1] >= a.min][:a.top] if a.min else rows[:a.top]
     title = f"{a.min} 分以上" if a.min else f"前 {a.top} 名"
     print(f"\n{title}：")
-    print(f"  {'代號':<8}{'分數':>4}  {'結構':<12}{'RSI':>5}")
+    print(f"  {'代號':<8}{'名稱':<10}{'分數':>4}  {'結構':<12}{'RSI':>5}")
     for sid, s, st, rsi in sel:
-        print(f"  {sid:<8}{s:>4}  {st:<12}{(f'{rsi:.0f}' if rsi else '—'):>5}")
+        nm = names.get(sid, "")
+        print(f"  {sid:<8}{nm:<10}{s:>4}  {st:<12}{(f'{rsi:.0f}' if rsi else '—'):>5}")
     print("\n⚠️ 高分=現在最強勢的描述,非買訊（90分桶歷史勝率46%沒比低分高,見 README）。")
 
 
