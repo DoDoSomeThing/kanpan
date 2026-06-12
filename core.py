@@ -16,19 +16,15 @@ kanpan core — 台股看盤面板核心（2026-06-12）
 import gzip
 import json
 import os
+import ssl
+import urllib.request
+from datetime import date, timedelta
+from pathlib import Path
 
 # ---------- 資料載入 ----------
 
-def load_bars(sid: str, cache_path: str) -> list:
-    """讀 K 線 cache（.json 或 .json.gz），統一欄位，按日期排序。
-    cache 格式：{sid: [{date,open,high/max,low/min,close,volume}, ...]}"""
-    if cache_path.endswith(".gz"):
-        d = json.load(gzip.open(cache_path))
-    else:
-        d = json.load(open(cache_path, encoding="utf-8"))
-    rows = d.get(sid)
-    if not rows:
-        raise KeyError(f"cache 沒有 {sid}")
+def _norm(rows: list) -> list:
+    """統一欄位（容忍 high/max、low/min），按日期排序。"""
     out = []
     for r in rows:
         out.append({
@@ -37,9 +33,68 @@ def load_bars(sid: str, cache_path: str) -> list:
             "high":   r.get("high", r.get("max")),
             "low":    r.get("low", r.get("min")),
             "close":  r["close"],
-            "volume": r.get("volume", 0) or 0,
+            "volume": r.get("volume", r.get("Trading_Volume", 0)) or 0,
         })
     return sorted(out, key=lambda x: x["date"])
+
+
+def _find_finmind_token() -> str:
+    """環境變數 > stock-secrets/股票用bot.env（跨工具找，沿用 vp_brief 模式）。"""
+    t = os.getenv("FINMIND_TOKEN", "")
+    if t:
+        return t
+    cands = [os.getenv("STOCK_SECRETS_DIR"),
+             str(Path.home() / "Desktop" / "Justin" / "stock-secrets")]
+    for d in filter(None, cands):
+        p = Path(d) / "股票用bot.env"
+        if p.exists():
+            for line in p.read_text(encoding="utf-8").splitlines():
+                if line.strip().startswith("FINMIND_TOKEN="):
+                    return line.split("=", 1)[1].strip().strip('"')
+    return ""
+
+
+def _fetch_finmind(sid: str) -> list:
+    """cache 沒有時即時抓 FinMind 日K（上市櫃都有）。回統一格式 bar list；抓不到回 []。"""
+    tok = _find_finmind_token()
+    start = (date.today() - timedelta(days=400)).isoformat()
+    url = ("https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice"
+           f"&data_id={sid}&start_date={start}&token={tok}")
+    try:
+        r = json.load(urllib.request.urlopen(url, timeout=30,
+                                             context=ssl.create_default_context()))
+    except Exception:
+        return []
+    return _norm(r.get("data", []))
+
+
+def load_bars(sid: str, cache_path: str) -> list:
+    """讀 K 線：主 cache → 本地 extra cache → FinMind 即時抓(上市櫃通吃，存 extra 下次快)。
+    cache 格式：{sid: [{date,open,high/max,low/min,close,volume}, ...]}"""
+    d = json.load(gzip.open(cache_path)) if cache_path.endswith(".gz") \
+        else json.load(open(cache_path, encoding="utf-8"))
+    rows = d.get(sid)
+    if rows:
+        return _norm(rows)
+
+    # 主 cache 沒有（多為上櫃 TPEX）→ 本地 extra cache（當日有效）
+    extra = Path(cache_path).parent / "extra" / f"{sid}.json"
+    if extra.exists():
+        try:
+            obj = json.loads(extra.read_text(encoding="utf-8"))
+            if obj.get("fetched") == date.today().isoformat() and obj.get("bars"):
+                return obj["bars"]
+        except Exception:
+            pass
+
+    # 即時抓 FinMind，存 extra
+    bars = _fetch_finmind(sid)
+    if not bars:
+        raise KeyError(f"查無 {sid}（cache 與 FinMind 都沒有，確認代號）")
+    extra.parent.mkdir(parents=True, exist_ok=True)
+    extra.write_text(json.dumps({"fetched": date.today().isoformat(), "bars": bars},
+                                ensure_ascii=False), encoding="utf-8")
+    return bars
 
 
 # ---------- 指標 ----------
