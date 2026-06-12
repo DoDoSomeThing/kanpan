@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+# 大檔資料不進 git（fetch_data.py 下載）
+data/kline_deep.json
+data/revenue.json
+cache/
