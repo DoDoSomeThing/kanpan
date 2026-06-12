@@ -79,15 +79,14 @@ def render(sid, p, stats):
         hi_lo = "偏高" if p["pos_pct"] >= 70 else "偏低" if p["pos_pct"] <= 30 else "中段"
         out.append(f"位置:     60日區間 {p['pos_pct']}%（{hi_lo}）")
     if p.get("vah"):
-        out.append(f"參考價位: 壓力 {p['vah']}｜中軸 {p['poc']}｜支撐 {p['val']}（非建議）")
+        out.append(f"參考價位: 壓力 {p['vah']}｜中軸 {p['poc']}｜支撐 {p['val']}")
     inst = p.get("inst")
     if inst:
-        out += ["", f"法人買賣超（{inst['date']}，描述非訊號）:"]
+        out += ["", f"法人買賣超（{inst['date']}）:"]
         out.append("  " + fmt_row("外資", inst["foreign"]))
         out.append("  " + fmt_row("投信", inst["trust"]))
         out.append("  " + fmt_row("自營", inst["dealer"]))
     out += ["", "-" * 30, "評語:", comment(p), "", line]
-    out.append("※ 描述現況與歷史統計，非買賣建議。")
     return "\n".join(out)
 
 

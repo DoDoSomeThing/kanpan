@@ -94,7 +94,6 @@ def main():
     for sid, s, st, rsi in sel:
         nm = names.get(sid, "")
         print(f"  {sid:<8}{nm:<10}{s:>4}  {st:<12}{(f'{rsi:.0f}' if rsi else '—'):>5}")
-    print("\n⚠️ 高分=現在最強勢的描述,非買訊（90分桶歷史勝率46%沒比低分高,見 README）。")
 
 
 if __name__ == "__main__":

@@ -67,7 +67,7 @@
     <option value="TPEX">上櫃</option>
   </select>
   <button id="go">看盤</button>
-  <span class="hint">圖表 = TradingView 官方 widget｜右側 = kanpan 分析（描述非建議）</span>
+  <span class="hint">圖表 = TradingView 官方 widget｜右側 = kanpan 分析</span>
 </header>
 <main>
   <div id="chart"></div>
@@ -133,7 +133,7 @@ async function loadPanel(sid) {
     <div class="row"><span>5/10/20日勝率</span><span>${b.win5}% / ${b.win10}% / ${b.win20}%</span></div>
     <div class="row"><span>平均報酬(20日)</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
     <div class="row"><span>最大回撤</span><span class="weak">${b.mdd}%</span></div>
-    <div class="note">${b.period}，歷史統計非預測</div>`
+    <div class="note">${b.period}</div>`
     : `<div class="note">歷史統計未產生</div>`;
   const posTag = d.pos_pct == null ? "" :
     d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
@@ -142,8 +142,7 @@ async function loadPanel(sid) {
     <div class="sec">法人買賣超（${d.inst.date}）</div>
     ${instRow("外資", d.inst.foreign)}
     ${instRow("投信", d.inst.trust)}
-    ${instRow("自營", d.inst.dealer)}
-    <div class="note">描述現況，非進場訊號</div>` : "";
+    ${instRow("自營", d.inst.dealer)}` : "";
 
   el.innerHTML = `
     <div><b style="font-size:15px">${d.sid}</b>　${live}</div>
@@ -162,14 +161,12 @@ async function loadPanel(sid) {
     <div class="row"><span>量能</span><span>${d.vol_ratio ?? "—"}倍 ${d.vol_tag}</span></div>
     <div class="row"><span>量堆積</span><span>${d.skew_tag ?? "—"}</span></div>
     <div class="row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
-    ${d.vah ? `<div class="row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>
-    <div class="note">參考價位非買賣建議</div>` : ""}
+    ${d.vah ? `<div class="row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}
     ${d.vol_note ? `<div class="note">${d.vol_note}</div>` : ""}
     ${inst}
     <div class="kp-hr"></div>
     <div class="sec">評語</div>
-    <div class="comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>
-    <div class="foot">${d.disclaimer}</div>`;
+    <div class="comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>`;
 }
 
 function go() {

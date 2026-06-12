@@ -88,7 +88,6 @@ def panel_ep():
     except Exception:
         p["inst"] = None
     p["comment"] = comment(p)
-    p["disclaimer"] = "描述現況與歷史統計，非買賣建議"
     return jsonify(p)
 
 

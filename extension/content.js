@@ -89,7 +89,7 @@
         <div class="kp-row"><span>5/10/20日勝率</span><span>${b.win5}% / ${b.win10}% / ${b.win20}%</span></div>
         <div class="kp-row"><span>平均報酬(20日)</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
         <div class="kp-row"><span>最大回撤</span><span class="kp-weak">${b.mdd}%</span></div>
-        <div class="kp-note">${b.period}，歷史統計非預測</div>`
+        <div class="kp-note">${b.period}</div>`
         : `<div class="kp-note">歷史統計未產生（research/score_history.py）</div>`;
       const posTag = d.pos_pct == null ? "" :
         d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
@@ -111,21 +111,17 @@
         <div class="kp-row"><span>量能</span><span>${d.vol_ratio ?? "—"}倍 ${d.vol_tag}</span></div>
         <div class="kp-row"><span>量堆積</span><span>${d.skew_tag ?? "—"}</span></div>
         <div class="kp-row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
-        ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>
-        <div class="kp-note">參考價位非買賣建議</div>` : ""}
+        ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}
         ${d.inst ? `
         <div class="kp-hr"></div>
         <div class="kp-sec">法人買賣超（${d.inst.date}）</div>
         ${instRow("外資", d.inst.foreign)}
         ${instRow("投信", d.inst.trust)}
-        ${instRow("自營", d.inst.dealer)}
-        <div class="kp-note">描述現況，非進場訊號</div>` : ""}
+        ${instRow("自營", d.inst.dealer)}` : ""}
         ${d.vol_note ? `<div class="kp-note">${d.vol_note}</div>` : ""}
         <div class="kp-hr"></div>
         <div class="kp-sec">評語</div>
-        <div class="kp-comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>
-        <div class="kp-hr"></div>
-        <div class="kp-foot">${d.disclaimer}</div>`;
+        <div class="kp-comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>`;
     }
     p.querySelector(".kp-close").onclick = () => {
       p.remove(); panel = null; lastSid = null;
