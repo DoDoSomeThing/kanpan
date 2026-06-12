@@ -10,6 +10,8 @@
   // TV 點自選換股「網址不更新」→ 讀畫面即時元件，網址當後備。
   const CODE = /^([0-9]{4,6}[A-Z]?)\b/;
   const TWMKT = /(?:TWSE|TPEX|TWO|ROCO):([0-9]{4,6}[A-Z]?)\b/;
+  // Yahoo 股市：tw.stock.yahoo.com/quote/2330.TW（上市.TW / 上櫃.TWO），代號在網址
+  const YAHOO = /\/quote\/([0-9]{4,6}[A-Z]?)(?:\.TW[O]?)?/;
 
   function fromText(s) {
     const m = (s || "").trim().match(CODE);
@@ -17,6 +19,12 @@
   }
 
   function getTicker() {
+    // Yahoo 股市：代號在網址、換股會變 → 優先
+    if (location.hostname.includes("stock.yahoo.com")) {
+      const m = decodeURIComponent(location.href).match(YAHOO);
+      return m ? m[1] : null;
+    }
+    // TradingView：點自選換股網址不更新 → 先讀畫面即時元件
     const sels = ["#header-toolbar-symbol-search",
                   '[data-name="legend-source-title"]',
                   'button[aria-label*="symbol" i]'];
