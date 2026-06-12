@@ -77,6 +77,89 @@ def rsi14(closes: list, n: int = 14):
     return out
 
 
+# ---------- 量價分布（Volume Profile）：算 壓力/中軸/支撐 參考價位 ----------
+
+VP_BINS = 40      # 價格切 40 格
+VP_VA   = 0.70    # 價值區涵蓋 70% 成交量
+
+def vp_levels(bars: list):
+    """對一段 bars 算量價分布 → (poc中軸, vah壓力, val支撐, skew量堆積比)。
+    skew = POC 之上成交量占比（0.5 平衡、>0.58 偏多方堆量、<0.42 偏空方）。"""
+    lo = min(b["low"] for b in bars if b["low"] is not None)
+    hi = max(b["high"] for b in bars if b["high"] is not None)
+    if hi <= lo:
+        return bars[-1]["close"], hi, lo, 0.5
+    step = (hi - lo) / VP_BINS
+    vol = [0.0] * VP_BINS
+    for b in bars:
+        if b["low"] is None or b["high"] is None:
+            continue
+        b_lo = max(0, min(VP_BINS - 1, int((b["low"] - lo) / step)))
+        b_hi = max(0, min(VP_BINS - 1, int((b["high"] - lo) / step)))
+        per = (b["volume"] or 0) / (b_hi - b_lo + 1)
+        for j in range(b_lo, b_hi + 1):
+            vol[j] += per
+    poc_i = max(range(VP_BINS), key=lambda j: vol[j])
+    total = sum(vol)
+    target = total * VP_VA
+    lo_i = hi_i = poc_i
+    acc = vol[poc_i]
+    while acc < target and (lo_i > 0 or hi_i < VP_BINS - 1):  # 由 POC 往兩側擴張
+        up = vol[hi_i + 1] if hi_i < VP_BINS - 1 else -1
+        dn = vol[lo_i - 1] if lo_i > 0 else -1
+        if up >= dn:
+            hi_i += 1; acc += vol[hi_i]
+        else:
+            lo_i -= 1; acc += vol[lo_i]
+    price = lambda j: lo + (j + 0.5) * step
+    above = sum(vol[j] for j in range(VP_BINS) if price(j) > price(poc_i))
+    skew = above / total if total else 0.5
+    return price(poc_i), price(hi_i), price(lo_i), skew
+
+
+def skew_tag(skew):
+    if skew is None:
+        return "資料不足"
+    if skew > 0.58:
+        return "量偏多方堆積"
+    if skew < 0.42:
+        return "量偏空方堆積"
+    return "量能均衡"
+
+
+# ---------- 週線趨勢 + 日週共振 ----------
+
+def weekly_trend(bars: list):
+    """日K 聚成週K(ISO週取最後收盤)，週收盤 vs 週MA10。
+    回 (週線文字, w_up bool 或 None資料不足)。"""
+    import datetime as _dt
+    weeks = {}
+    for b in bars:
+        try:
+            d = _dt.date.fromisoformat(b["date"][:10])
+        except ValueError:
+            continue
+        iso = d.isocalendar()
+        weeks[(iso[0], iso[1])] = b["close"]
+    wcloses = [weeks[k] for k in sorted(weeks)]
+    if len(wcloses) < 11:
+        return "週期不足", None
+    wma10 = sum(wcloses[-10:]) / 10
+    w_up = wcloses[-1] > wma10
+    return ("週線多頭(站上週MA10)" if w_up else "週線空頭(跌破週MA10)"), w_up
+
+
+def resonance(d_up, w_up):
+    """日週共振：兩個時間框同向=訊號較強。"""
+    if w_up is None:
+        return "週期不足"
+    if d_up and w_up:
+        return "日週同步偏多（共振）"
+    if (not d_up) and (not w_up):
+        return "日週同步偏空（共振）"
+    return "日週分歧，方向未定"
+
+
 # ---------- 區塊 1：Trend Score ----------
 
 def trend_score(c, ma5, ma10, ma20, ma60, ma120) -> int:
@@ -242,6 +325,19 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     vr, vtag = volume_block(vols[idx], vol20)
     score = vp_score(t, rsi, vr, c, low60, high60)
 
+    # 量價分布參考位（近60日窗）+ 量堆積方向
+    try:
+        poc, vah, val, sk = vp_levels(win)
+        poc, vah, val = round(poc, 2), round(vah, 2), round(val, 2)
+        sk = round(sk, 2)
+    except (ValueError, ZeroDivisionError):
+        poc = vah = val = sk = None
+
+    # 週線趨勢 + 日週共振
+    wk_txt, w_up = weekly_trend(bars[:idx + 1])
+    d_up = bool(ma20 and c > ma20)
+    reso = resonance(d_up, w_up)
+
     return {
         "date": bars[idx]["date"], "close": round(c, 2),
         "ma5": ma5, "ma10": ma10, "ma20": ma20, "ma60": ma60, "ma120": ma120,
@@ -249,6 +345,9 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "structure": st,
         "rsi": round(r, 1) if r is not None else None, "momentum": mtag,
         "vol_ratio": vr, "vol_tag": vtag,
+        "skew": sk, "skew_tag": skew_tag(sk),
+        "weekly": wk_txt, "resonance": reso,
+        "poc": poc, "vah": vah, "val": val,
         "pos_pct": position_pct(c, low60, high60),
         "high60": high60, "low60": low60,
         "vp_score": score,

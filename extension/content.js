@@ -67,27 +67,35 @@
         : `<span class="kp-static">收盤</span>`;
       const b = d.hist_bucket;
       const hist = (b && b.n > 0) ? `
-        <div class="kp-sec">歷史統計（Score ${b.lo}~${b.hi}）</div>
+        <div class="kp-sec">歷史統計（分數 ${b.lo}~${b.hi} 的過去表現）</div>
         <div class="kp-row"><span>樣本數</span><span>${b.n.toLocaleString()}</span></div>
         <div class="kp-row"><span>5/10/20日勝率</span><span>${b.win5}% / ${b.win10}% / ${b.win20}%</span></div>
         <div class="kp-row"><span>平均報酬(20日)</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
         <div class="kp-row"><span>最大回撤</span><span class="kp-weak">${b.mdd}%</span></div>
         <div class="kp-note">${b.period}，歷史統計非預測</div>`
         : `<div class="kp-note">歷史統計未產生（research/score_history.py）</div>`;
+      const posTag = d.pos_pct == null ? "" :
+        d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
       p.innerHTML = `
         <span class="kp-close">✕</span>
-        <div class="kp-title">kanpan　<b>${d.sid}</b> ${live}</div>
+        <div class="kp-title">kanpan 看盤　<b>${d.sid}</b> ${live}</div>
         <div class="kp-hr"></div>
-        <div class="kp-score ${scoreColor(d.vp_score)}">VP Score　<b>${d.vp_score}</b></div>
+        <div class="kp-score ${scoreColor(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="kp-note"> /100</span></div>
+        <div class="kp-note">趨勢40%+動能20%+量能20%+位置20%</div>
         <div class="kp-note">${d.date}　收盤/現價 ${d.close}</div>
         <div class="kp-hr"></div>
         ${hist}
         <div class="kp-hr"></div>
-        <div class="kp-row"><span>Trend</span><span>${d.trend_score}/100</span></div>
-        <div class="kp-row"><span>Structure</span><span><b>${d.structure}</b></span></div>
-        <div class="kp-row"><span>Momentum</span><span>RSI ${d.rsi ?? "—"}　${d.momentum}</span></div>
-        <div class="kp-row"><span>Volume</span><span>${d.vol_ratio ?? "—"}倍　${d.vol_tag}</span></div>
-        <div class="kp-row"><span>Position</span><span>60日區間 ${d.pos_pct ?? "—"}%</span></div>
+        <div class="kp-row"><span>趨勢分數</span><span>${d.trend_score}/100（均線結構）</span></div>
+        <div class="kp-row"><span>結構</span><span><b>${d.structure}</b></span></div>
+        <div class="kp-row"><span>週線</span><span>${d.weekly ?? "—"}</span></div>
+        <div class="kp-row"><span>日週共振</span><span>${d.resonance ?? "—"}</span></div>
+        <div class="kp-row"><span>動能</span><span>RSI ${d.rsi ?? "—"}　${d.momentum}</span></div>
+        <div class="kp-row"><span>量能</span><span>${d.vol_ratio ?? "—"}倍 ${d.vol_tag}</span></div>
+        <div class="kp-row"><span>量堆積</span><span>${d.skew_tag ?? "—"}</span></div>
+        <div class="kp-row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
+        ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>
+        <div class="kp-note">參考價位非買賣建議</div>` : ""}
         ${d.vol_note ? `<div class="kp-note">${d.vol_note}</div>` : ""}
         <div class="kp-hr"></div>
         <div class="kp-sec">評語</div>
