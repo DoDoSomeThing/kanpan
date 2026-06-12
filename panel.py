@@ -16,6 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import load_bars, compute_panel, comment
+from inst import get_inst, fmt_row
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CACHES = [
@@ -79,6 +80,12 @@ def render(sid, p, stats):
         out.append(f"位置:     60日區間 {p['pos_pct']}%（{hi_lo}）")
     if p.get("vah"):
         out.append(f"參考價位: 壓力 {p['vah']}｜中軸 {p['poc']}｜支撐 {p['val']}（非建議）")
+    inst = p.get("inst")
+    if inst:
+        out += ["", f"法人買賣超（{inst['date']}，描述非訊號）:"]
+        out.append("  " + fmt_row("外資", inst["foreign"]))
+        out.append("  " + fmt_row("投信", inst["trust"]))
+        out.append("  " + fmt_row("自營", inst["dealer"]))
     out += ["", "-" * 30, "評語:", comment(p), "", line]
     out.append("※ 描述現況與歷史統計，非買賣建議。")
     return "\n".join(out)
@@ -92,6 +99,10 @@ def main():
     cache = find_cache(a.cache)
     bars = load_bars(a.sid.upper(), cache)
     p = compute_panel(bars)
+    try:
+        p["inst"] = get_inst(a.sid.upper())
+    except Exception:
+        p["inst"] = None
     print(render(a.sid.upper(), p, load_stats()))
 
 

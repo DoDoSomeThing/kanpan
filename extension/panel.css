@@ -45,6 +45,8 @@
   color: #eef1fa;
 }
 #kp-panel .kp-foot { color: #6b7596; font-size: 10px; font-style: italic; margin-top: 6px; }
+#kp-panel .kp-buy  { color: #ff8a8a !important; }   /* 買超紅(台股習慣) */
+#kp-panel .kp-sell { color: #6fd08c !important; }   /* 賣超綠 */
 #kp-panel .kp-err { color: #ff7a7a; }
 #kp-panel .kp-close { float: right; cursor: pointer; color: #8893ad; }
 #kp-panel .kp-close:hover { color: #fff; }

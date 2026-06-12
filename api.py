@@ -22,6 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from core import load_bars, compute_panel, comment
 from live import market_open, live_price, TW_TZ
+from inst import get_inst
 from datetime import datetime
 
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
@@ -82,6 +83,10 @@ def panel_ep():
     p["live"] = live
     p["live_time"] = live_time
     p["hist_bucket"] = bucket_of(p["vp_score"])
+    try:
+        p["inst"] = get_inst(sid)   # 三大法人(上市 T86)；上櫃/未列 None
+    except Exception:
+        p["inst"] = None
     p["comment"] = comment(p)
     p["disclaimer"] = "描述現況與歷史統計，非買賣建議"
     return jsonify(p)

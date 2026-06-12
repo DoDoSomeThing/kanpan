@@ -54,6 +54,15 @@
     return "kp-weak";
   }
 
+  function instRow(name, x) {
+    // 一列一法人：外資: +3,927 張（連買3日），買紅賣綠(台股習慣)
+    const cls = x.net > 0 ? "kp-buy" : x.net < 0 ? "kp-sell" : "";
+    let s = (x.net > 0 ? "+" : "") + x.net.toLocaleString() + " 張";
+    if (x.streak > 1) s += `（連買${x.streak}日）`;
+    else if (x.streak < -1) s += `（連賣${-x.streak}日）`;
+    return `<div class="kp-row"><span>${name}</span><span class="${cls}">${s}</span></div>`;
+  }
+
   function render(d) {
     const p = ensurePanel();
     if (d.error) {
@@ -96,6 +105,13 @@
         <div class="kp-row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
         ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>
         <div class="kp-note">參考價位非買賣建議</div>` : ""}
+        ${d.inst ? `
+        <div class="kp-hr"></div>
+        <div class="kp-sec">法人買賣超（${d.inst.date}）</div>
+        ${instRow("外資", d.inst.foreign)}
+        ${instRow("投信", d.inst.trust)}
+        ${instRow("自營", d.inst.dealer)}
+        <div class="kp-note">描述現況，非進場訊號</div>` : ""}
         ${d.vol_note ? `<div class="kp-note">${d.vol_note}</div>` : ""}
         <div class="kp-hr"></div>
         <div class="kp-sec">評語</div>
