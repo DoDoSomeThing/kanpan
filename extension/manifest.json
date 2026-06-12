@@ -1,0 +1,13 @@
+{
+  "manifest_version": 3,
+  "name": "kanpan 看盤",
+  "version": "0.1",
+  "description": "TradingView 開台股 → 右側 kanpan 面板（VP Score / 結構 / 歷史統計，非買賣建議）",
+  "content_scripts": [
+    {
+      "matches": ["https://tw.tradingview.com/*", "https://www.tradingview.com/*"],
+      "js": ["content.js"],
+      "css": ["panel.css"]
+    }
+  ]
+}

@@ -35,11 +35,14 @@ Position:  60日區間 72.1%
 ============================
 ```
 
-## 結構
+## 結構（自含，不依賴其他專案）
 
 ```
 core.py                  指標 + 四區塊 + VP Score（純函式，無 I/O 副作用）
 panel.py                 CLI 面板：python panel.py 2330
+api.py                   本機後端(8771)：給 Chrome 擴充用，盤中自動套即時價
+live.py                  台股盤中即時價（TWSE MIS，9:00-13:30）
+extension/               Chrome 擴充：TradingView 開台股 → 右側真分割面板
 research/score_history.py  歷史驗證：對 2021-2024 全市場 37.5 萬樣本分桶統計
 data/fetch_data.py       下載資料（大檔不進 git，放 GitHub Release）
 ```
@@ -48,7 +51,13 @@ data/fetch_data.py       下載資料（大檔不進 git，放 GitHub Release）
 
 ```bash
 python data/fetch_data.py cache   # 近期日K（面板用）
-python panel.py 2330              # 看面板
+python panel.py 2330              # CLI 看面板
+
+# TradingView 面板：
+python api.py                     # 起本機後端 8771
+# Chrome → chrome://extensions → 開發人員模式 → 載入未封裝 → 選 extension/
+# 開 tw.tradingview.com 任一台股 → 右側 kanpan 面板（盤中顯示「● 即時」）
+
 # （可選）重建歷史統計：
 python data/fetch_data.py deep    # 80MB 深歷史K
 python research/score_history.py

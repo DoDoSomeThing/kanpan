@@ -19,8 +19,7 @@ from core import load_bars, compute_panel, comment
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CACHES = [
-    os.path.join(HERE, "cache", "kline_cache.json.gz"),
-    os.path.join(HERE, "..", "Github專案", "tw-stock-bot", "cache", "kline_cache.json.gz"),
+    os.path.join(HERE, "cache", "kline_cache.json.gz"),   # kanpan 自己的 cache(fetch_data.py 下載)
 ]
 STATS_PATH = os.path.join(HERE, "research", "score_stats.json")
 
