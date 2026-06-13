@@ -83,12 +83,69 @@ def ensure_cache(days: int = 12) -> list:
     return have
 
 
-def get_inst(sid: str, days: int = 12) -> dict | None:
-    """回 {date, foreign:{net,streak}, trust:{...}, dealer:{...}}；無資料(上櫃/ETF未列) None。
-    streak: 正=連買N日、負=連賣N日、0=最新日無動作。單位:張。"""
-    dates = ensure_cache(days)
-    if not dates:
+def _streak(xs):
+    """從最新往回數同向天數。最新=0 回 0。正=連買、負=連賣。"""
+    if not xs or xs[-1] == 0:
+        return 0
+    sign = 1 if xs[-1] > 0 else -1
+    n = 0
+    for v in reversed(xs):
+        if (v > 0) == (sign > 0) and v != 0:
+            n += 1
+        else:
+            break
+    return n * sign
+
+
+def _build(series: dict, last_date_iso: str) -> dict:
+    """series={foreign:[],trust:[],dealer:[]}(舊→新,張) → 面板用 dict。"""
+    out = {"date": last_date_iso}
+    for k in ("foreign", "trust", "dealer"):
+        xs = series[k]
+        out[k] = {"net": xs[-1], "streak": _streak(xs)}
+    return out
+
+
+def _from_finmind(sid: str, days: int = 20) -> dict | None:
+    """上櫃/T86 沒收錄時 → FinMind 法人買賣超(上市櫃都有)。回同 _build 結構。"""
+    from datetime import date as _date
+    try:
+        from core import _find_finmind_token
+        tok = _find_finmind_token()
+    except Exception:
+        tok = ""
+    start = (_date.today() - timedelta(days=days)).isoformat()
+    url = ("https://api.finmindtrade.com/api/v4/data?dataset="
+           "TaiwanStockInstitutionalInvestorsBuySell"
+           f"&data_id={sid}&start_date={start}&token={tok}")
+    try:
+        with urllib.request.urlopen(url, timeout=20, context=ssl.create_default_context()) as r:
+            rows = json.loads(r.read().decode("utf-8")).get("data", [])
+    except Exception:
         return None
+    if not rows:
+        return None
+    # 按日期彙總成 外資/投信/自營 淨買超(張)
+    by_date = {}
+    cat = {"Foreign_Investor": "foreign", "Foreign_Dealer_Self": "foreign",
+           "Investment_Trust": "trust", "Dealer_self": "dealer", "Dealer_Hedging": "dealer"}
+    for x in rows:
+        k = cat.get(x.get("name"))
+        if not k:
+            continue
+        agg = by_date.setdefault(x["date"], {"foreign": 0, "trust": 0, "dealer": 0})
+        agg[k] += (x.get("buy", 0) - x.get("sell", 0)) // 1000   # 股→張
+    dates = sorted(by_date)
+    series = {k: [by_date[d][k] for d in dates] for k in ("foreign", "trust", "dealer")}
+    if not series["foreign"]:
+        return None
+    return _build(series, dates[-1])
+
+
+def get_inst(sid: str, days: int = 12) -> dict | None:
+    """回 {date, foreign:{net,streak}, trust:{...}, dealer:{...}}；查不到回 None。
+    上市走本地 T86 cache；T86 沒收錄(上櫃)→ FinMind fallback。單位:張。"""
+    dates = ensure_cache(days)
     series = {"foreign": [], "trust": [], "dealer": []}
     last_date = None
     for d8 in dates:
@@ -103,27 +160,9 @@ def get_inst(sid: str, days: int = 12) -> dict | None:
             series["trust"].append(row[1])
             series["dealer"].append(row[2])
             last_date = d8
-    if not series["foreign"]:
-        return None
-
-    def streak(xs):
-        """從最新往回數同向天數。最新=0 回 0。"""
-        if not xs or xs[-1] == 0:
-            return 0
-        sign = 1 if xs[-1] > 0 else -1
-        n = 0
-        for v in reversed(xs):
-            if (v > 0) == (sign > 0) and v != 0:
-                n += 1
-            else:
-                break
-        return n * sign
-
-    out = {"date": f"{last_date[:4]}-{last_date[4:6]}-{last_date[6:]}"}
-    for k in ("foreign", "trust", "dealer"):
-        xs = series[k]
-        out[k] = {"net": xs[-1], "streak": streak(xs)}
-    return out
+    if series["foreign"]:
+        return _build(series, f"{last_date[:4]}-{last_date[4:6]}-{last_date[6:]}")
+    return _from_finmind(sid)        # 上櫃等 T86 未收錄 → FinMind
 
 
 def fmt_row(name: str, d: dict) -> str:
