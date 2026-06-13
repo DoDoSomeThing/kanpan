@@ -48,6 +48,30 @@ def health():
     return jsonify(ok=True)
 
 
+@app.get("/ohlc")
+def ohlc_ep():
+    """給 lightweight-charts 畫 K 線用（自畫，不靠 TradingView widget）。
+    回 {candles:[{time,open,high,low,close}], volumes:[{time,value,color}]}。"""
+    sid = (request.args.get("sid") or "").strip().upper()
+    if not re.fullmatch(r"[0-9]{4,6}[A-Z]?", sid):
+        return jsonify(error="sid 格式錯"), 400
+    days = request.args.get("days", default=250, type=int)
+    try:
+        bars = load_bars(sid, CACHE)
+    except KeyError as e:
+        return jsonify(error=str(e)), 404
+    bars = bars[-max(60, min(days, 600)):]
+    candles, volumes = [], []
+    for b in bars:
+        t = b["date"]
+        candles.append({"time": t, "open": b["open"], "high": b["high"],
+                        "low": b["low"], "close": b["close"]})
+        up = b["close"] >= b["open"]
+        volumes.append({"time": t, "value": b["volume"],
+                        "color": "rgba(226,72,58,.5)" if up else "rgba(38,166,154,.5)"})
+    return jsonify(sid=sid, candles=candles, volumes=volumes)
+
+
 @app.get("/panel")
 def panel_ep():
     sid = (request.args.get("sid") or "").strip().upper()
