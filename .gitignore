@@ -4,3 +4,4 @@ __pycache__/
 data/kline_deep.json
 data/revenue.json
 cache/
+cards.json
