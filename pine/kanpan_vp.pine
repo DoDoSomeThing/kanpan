@@ -1,0 +1,240 @@
+//@version=5
+// ============================================================
+// kanpan VP — 判讀燈號 + A–G 拆解 (Pine 版，疊在 TradingView 圖上)
+// 對應本機 kanpan 面板：VP Score / 判讀燈號 / A–G。
+// 差異：Pine 用 TV 資料，算不到台股三大法人(那留在本機擴充)；
+//       也沒回測勝率(本機才有 score_stats)，信心欄改顯示 net 共振數。
+// 用法：TradingView → Pine 編輯器 → 貼上 → 儲存 → 加到圖表。
+// ============================================================
+indicator("kanpan VP — 判讀燈號", overlay = true, max_labels_count = 500)
+
+// ---------- 參數 ----------
+showPanel   = input.bool(true,  "顯示右下面板")
+showSignals = input.bool(true,  "K線畫轉多/轉空箭頭")
+showLevels  = input.bool(true,  "畫 POC/壓力/支撐 軌道")
+vpLen       = input.int(60, "靜態 VP 窗(日)", minval = 20)
+vpDyn       = input.int(20, "動態 VP 窗(日)", minval = 5)
+vpBins      = input.int(40, "VP 價格分格",   minval = 10)
+
+// ---------- 均線 / RSI / 量 ----------
+ma5   = ta.sma(close, 5)
+ma10  = ta.sma(close, 10)
+ma20  = ta.sma(close, 20)
+ma60  = ta.sma(close, 60)
+ma120 = ta.sma(close, 120)
+rsi   = ta.rsi(close, 14)
+vol20 = ta.sma(volume, 20)
+volRatio = vol20 > 0 ? volume / vol20 : na
+
+// ---------- Trend Score (5 條件各 20 分) ----------
+ts = 0
+ts := ts + (close > ma20 ? 20 : 0)
+ts := ts + (ma20 > ma60 ? 20 : 0)
+ts := ts + (ma60 > ma120 ? 20 : 0)
+ts := ts + (close > ma10 ? 20 : 0)
+ts := ts + (close > ma5 ? 20 : 0)
+
+// ---------- 60日高低 / 位置 ----------
+hi60   = ta.highest(high, vpLen)
+lo60   = ta.lowest(low, vpLen)
+posPct = hi60 > lo60 ? (close - lo60) / (hi60 - lo60) * 100 : na
+
+// ---------- VP Score 成分 ----------
+momScore = na(rsi) ? 50.0 : math.max(0, math.min(100, rsi))
+volScore = na(volRatio) ? 50.0 : volRatio > 3 ? 60.0 : math.max(0, math.min(100, volRatio * 50))
+posScore = na(posPct) ? 50.0 :
+   posPct >= 95 ? 70.0 :
+   posPct >= 40 ? 80.0 + (posPct - 40) / 55 * 15 :
+   posPct >= 10 ? 40.0 + (posPct - 10) / 30 * 40 : 20.0
+vpScore = math.round(ts * 0.4 + momScore * 0.2 + volScore * 0.2 + posScore * 0.2)
+
+// ---------- Volume Profile：POC / VAH / VAL (binning) ----------
+f_vp(simple int len, simple int bins) =>
+    hh = ta.highest(high, len)
+    ll = ta.lowest(low, len)
+    poc = close
+    vah = hh
+    val = ll
+    if hh > ll
+        step = (hh - ll) / bins
+        vol = array.new_float(bins, 0.0)
+        for i = 0 to len - 1
+            bl = math.max(0, math.min(bins - 1, int((low[i]  - ll) / step)))
+            bh = math.max(0, math.min(bins - 1, int((high[i] - ll) / step)))
+            per = nz(volume[i]) / (bh - bl + 1)
+            for j = bl to bh
+                array.set(vol, j, array.get(vol, j) + per)
+        pocI = 0
+        maxv = -1.0
+        for j = 0 to bins - 1
+            v = array.get(vol, j)
+            if v > maxv
+                maxv := v
+                pocI := j
+        total  = array.sum(vol)
+        target = total * 0.70
+        loI = pocI
+        hiI = pocI
+        acc = array.get(vol, pocI)
+        while acc < target and (loI > 0 or hiI < bins - 1)
+            up = hiI < bins - 1 ? array.get(vol, hiI + 1) : -1.0
+            dn = loI > 0 ? array.get(vol, loI - 1) : -1.0
+            if up >= dn
+                hiI := hiI + 1
+                acc := acc + array.get(vol, hiI)
+            else
+                loI := loI - 1
+                acc := acc + array.get(vol, loI)
+        poc := ll + (pocI + 0.5) * step
+        vah := ll + (hiI + 0.5) * step
+        val := ll + (loI + 0.5) * step
+    [poc, vah, val]
+
+[poc, vah, val]          = f_vp(vpLen, vpBins)
+[dynPoc, dynVah, dynVal] = f_vp(vpDyn, vpBins)
+
+// ---------- CCP / 整數關卡 / 影線 Excess(近似) ----------
+ccp    = (high - low) > 0 ? math.round((close - low) / (high - low) * 100) : na
+ccpTag = na(ccp) ? "" : ccp >= 70 ? "收高檔" : ccp <= 30 ? "收低檔" : "收中段"
+rstep  = close < 100 ? 5.0 : close < 1000 ? 10.0 : 50.0
+roundLvl  = math.round(close / rstep) * rstep
+roundDist = roundLvl > 0 ? (close - roundLvl) / roundLvl * 100 : na
+rng    = high - low
+upWick = rng > 0 ? (high - math.max(open, close)) / rng : na
+dnWick = rng > 0 ? (math.min(open, close) - low) / rng : na
+
+// ---------- 結構 ----------
+bullStack = ma20 > ma60
+aboveMa20 = close > ma20
+structure = "盤整"
+if close >= hi60
+    structure := "突破"
+else if ma60 > ma120 and bullStack and aboveMa20 and close > ma10
+    structure := "主升段"
+else if aboveMa20 and not bullStack
+    structure := "起漲"
+else if aboveMa20 and bullStack and close < ma10
+    structure := "多頭修正"
+else if aboveMa20 and bullStack
+    structure := "多頭"
+else if not aboveMa20 and lo60 > 0 and (close / lo60 - 1) < 0.05
+    structure := "底部"
+else if not aboveMa20 and ma20 < ma60
+    structure := "空頭"
+
+// ---------- 週線共振 ----------
+wClose = request.security(syminfo.tickerid, "W", close)
+wMa10  = request.security(syminfo.tickerid, "W", ta.sma(close, 10))
+wUp    = wClose > wMa10
+dUp    = close > ma20
+reso   = dUp and wUp ? 1 : (not dUp and not wUp) ? -1 : 0
+
+// ---------- 判讀燈號：net 共振分 ----------
+net = 0
+net := net + (structure == "主升段" or structure == "突破" ? 2 :
+   structure == "多頭" or structure == "起漲" ? 1 :
+   structure == "空頭" ? -2 : structure == "底部" ? -1 : 0)
+net := net + (ts >= 80 ? 1 : ts <= 20 ? -1 : 0)
+net := net + reso
+net := net + (na(rsi) ? 0 : rsi > 78 ? -1 : (rsi >= 50 and rsi <= 70) ? 1 : rsi < 40 ? -1 : 0)
+net := net + (not na(volRatio) and volRatio >= 1.5 and net > 0 ? 1 : 0)
+net := net + (na(ccp) ? 0 : ccp >= 70 ? 1 : ccp <= 30 ? -1 : 0)
+net := net + (dynPoc > poc ? 1 : dynPoc < poc ? -1 : 0)
+net := net + (na(posPct) ? 0 : (posPct > 95 or posPct < 15) ? -1 : 0)
+
+tone = "🟡 方向待定"
+tcol = color.yellow
+if net >= 5 and vpScore >= 72
+    tone := "🟢 強多頭訊號"
+    tcol := color.lime
+else if net >= 3
+    tone := "🟢 多頭有利"
+    tcol := color.green
+else if net <= -3
+    tone := "🔴 偏空轉弱"
+    tcol := color.red
+else if net <= -1
+    tone := "🟠 偏弱待觀察"
+    tcol := color.orange
+
+// ---------- K線箭頭：net 跨門檻轉多/轉空 ----------
+bullSig = net >= 3 and net[1] < 3
+bearSig = net <= -3 and net[1] > -3
+plotshape(showSignals and bullSig, "轉多", shape.triangleup,   location.belowbar, color.lime, size = size.small, text = "多")
+plotshape(showSignals and bearSig, "轉空", shape.triangledown, location.abovebar, color.red,  size = size.small, text = "空")
+
+// ---------- 均線 + VP 軌道 ----------
+plot(ma20, "MA20", color.new(color.yellow, 0), 1)
+plot(ma60, "MA60", color.new(#2962ff, 0), 1)
+plot(showLevels ? poc : na, "POC中軸", color.new(color.fuchsia, 0), 2, plot.style_linebr)
+plot(showLevels ? vah : na, "VAH壓力", color.new(color.red, 40),    1, plot.style_linebr)
+plot(showLevels ? val : na, "VAL支撐", color.new(color.green, 40),  1, plot.style_linebr)
+
+// ---------- 右下面板 (A–G) ----------
+f_ico(int ok) => ok == 1 ? "✅" : ok == -1 ? "🔴" : "⚪"
+
+var table tb = table.new(position.bottom_right, 2, 12, frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
+
+if showPanel and barstate.islast
+    bg = color.new(#0d1226, 10)
+    fg = color.new(#d7dbe6, 0)
+    // 標題
+    table.cell(tb, 0, 0, "kanpan VP", text_color = #7aa2ff, bgcolor = bg, text_size = size.normal)
+    table.cell(tb, 1, 0, "Score " + str.tostring(vpScore), text_color = fg, bgcolor = bg, text_size = size.normal)
+    // 判讀燈號
+    table.cell(tb, 0, 1, tone, text_color = tcol, bgcolor = bg, text_size = size.large)
+    table.cell(tb, 1, 1, "共振 net=" + str.tostring(net) + "｜" + structure, text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // A POC偏離度
+    aDist = poc > 0 ? (open - poc) / poc * 100 : na
+    aOk = na(aDist) ? 0 : math.abs(aDist) < 1.5 ? 1 : -1
+    table.cell(tb, 0, 2, f_ico(aOk) + " A 開盤偏離", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 2, na(aDist) ? "—" : str.tostring(aDist, "#.##") + "%（vs核心價）", text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // B 市場狀態 (VA寬度 動態 vs 靜態)
+    w20 = poc > 0 ? (dynVah - dynVal) / dynPoc : na
+    w60 = poc > 0 ? (vah - val) / poc : na
+    bTag = na(w20) or na(w60) ? "—" : w20 > w60 * 1.15 ? "VA擴張,波動放大" : w20 < w60 * 0.85 ? "VA收斂,盤整待變" : "VA持平"
+    table.cell(tb, 0, 3, "⚪ B 市場狀態", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 3, bTag, text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // C 頂端結構 (上影)
+    cTopOk = na(upWick) ? 0 : upWick < 0.4 ? 1 : -1
+    table.cell(tb, 0, 4, f_ico(cTopOk) + " C 頂端", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 4, na(upWick) ? "—" : upWick < 0.4 ? "正常,上方無異常" : "上影拒絕 " + str.tostring(upWick * 100, "#") + "%,賣壓", text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // C 底端結構 (下影)
+    cBotOk = na(dnWick) ? 0 : dnWick >= 0.4 ? 1 : 0
+    table.cell(tb, 0, 5, f_ico(cBotOk) + " C 底端", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 5, na(dnWick) ? "—" : dnWick >= 0.4 ? "下影承接 " + str.tostring(dnWick * 100, "#") + "%,買盤" : "正常,下方無異常", text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // D 買賣方向 (CCP)
+    dOk = na(ccp) ? 0 : ccp >= 50 ? 1 : -1
+    table.cell(tb, 0, 6, f_ico(dOk) + " D 買賣方向", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 6, na(ccp) ? "—" : "CCP=" + str.tostring(ccp) + "% " + ccpTag, text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // E 整數關卡
+    eOk = na(roundDist) ? 0 : math.abs(roundDist) < 1.5 ? 1 : 0
+    table.cell(tb, 0, 7, f_ico(eOk) + " E 整數關卡", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 7, na(roundDist) ? "—" : str.tostring(roundLvl) + "（" + (roundDist >= 0 ? "+" : "") + str.tostring(roundDist, "#.##") + "%）", text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // F Rolling POC
+    fOk = dynPoc > poc ? 1 : dynPoc < poc ? -1 : 0
+    table.cell(tb, 0, 8, f_ico(fOk) + " F RollingPOC", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 8, "動" + str.tostring(dynPoc, "#.##") + " vs 靜" + str.tostring(poc, "#.##") + (dynPoc > poc ? " 共識上移" : dynPoc < poc ? " 共識下移" : " 穩定"), text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // G 價位匯聚
+    lvMax = math.max(poc, math.max(dynPoc, roundLvl))
+    lvMin = math.min(poc, math.min(dynPoc, roundLvl))
+    spread = poc > 0 ? (lvMax - lvMin) / poc * 100 : na
+    gOk = na(spread) ? 0 : spread < 1.5 ? 1 : 0
+    table.cell(tb, 0, 9, f_ico(gOk) + " G 價位匯聚", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 9, na(spread) ? "—" : spread < 1.5 ? "三層匯聚 " + str.tostring(spread, "#.#") + "%" : "分散 " + str.tostring(spread, "#.#") + "%", text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // 動能 / 量能
+    table.cell(tb, 0, 10, "動能 / 量能", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 10, "RSI " + str.tostring(rsi, "#.#") + "｜量 " + (na(volRatio) ? "—" : str.tostring(volRatio, "#.##") + "x"), text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // 位置
+    table.cell(tb, 0, 11, "位置 / 週線", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 11, (na(posPct) ? "—" : str.tostring(posPct, "#.#") + "%") + "｜" + (wUp ? "週多" : "週空"), text_color = fg, bgcolor = bg, text_size = size.small)
