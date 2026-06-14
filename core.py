@@ -68,33 +68,53 @@ def _fetch_finmind(sid: str) -> list:
     return _norm(r.get("data", []))
 
 
-def load_bars(sid: str, cache_path: str) -> list:
-    """讀 K 線：主 cache → 本地 extra cache → FinMind 即時抓(上市櫃通吃，存 extra 下次快)。
-    cache 格式：{sid: [{date,open,high/max,low/min,close,volume}, ...]}"""
-    d = json.load(gzip.open(cache_path)) if cache_path.endswith(".gz") \
-        else json.load(open(cache_path, encoding="utf-8"))
-    rows = d.get(sid)
-    if rows:
-        return _norm(rows)
+def _recent_trading_day() -> str:
+    """最近應有資料的交易日(週末退回上週五)。盤中今日棒未出也用，差一天會被 FinMind 校正。"""
+    d = date.today()
+    wd = d.weekday()           # 0=一 .. 6=日
+    if wd >= 5:                # 週六/日 → 上週五
+        d = d - timedelta(days=wd - 4)
+    return d.isoformat()
 
-    # 主 cache 沒有（多為上櫃 TPEX）→ 本地 extra cache（當日有效）
+
+def load_bars(sid: str, cache_path: str) -> list:
+    """讀 K 線。主 cache 來自(封存的)tw-stock-bot repo，會過期 → 過期就單檔抓 FinMind 補新。
+    順序：extra 當日快取 → 主 cache(夠新就用) → FinMind(主 cache 舊/沒有時)。
+    cache 格式：{sid: [{date,open,high/max,low/min,close,volume}, ...]}"""
     extra = Path(cache_path).parent / "extra" / f"{sid}.json"
+    today = date.today().isoformat()
+
+    # 1) extra 當日快取(今天已抓過 FinMind，直接用，免重抓)
     if extra.exists():
         try:
             obj = json.loads(extra.read_text(encoding="utf-8"))
-            if obj.get("fetched") == date.today().isoformat() and obj.get("bars"):
+            if obj.get("fetched") == today and obj.get("bars"):
                 return obj["bars"]
         except Exception:
             pass
 
-    # 即時抓 FinMind，存 extra
+    # 2) 主 cache
+    d = json.load(gzip.open(cache_path)) if cache_path.endswith(".gz") \
+        else json.load(open(cache_path, encoding="utf-8"))
+    rows = d.get(sid)
+    main = _norm(rows) if rows else None
+
+    # 主 cache 夠新(最後一根 >= 最近交易日)→ 直接用，免打 FinMind
+    if main and main[-1]["date"][:10] >= _recent_trading_day():
+        return main
+
+    # 3) 主 cache 過期或沒有 → 抓 FinMind 補新，存 extra(當日有效)
     bars = _fetch_finmind(sid)
-    if not bars:
-        raise KeyError(f"查無 {sid}（cache 與 FinMind 都沒有，確認代號）")
-    extra.parent.mkdir(parents=True, exist_ok=True)
-    extra.write_text(json.dumps({"fetched": date.today().isoformat(), "bars": bars},
-                                ensure_ascii=False), encoding="utf-8")
-    return bars
+    if bars and (main is None or bars[-1]["date"] >= main[-1]["date"]):
+        extra.parent.mkdir(parents=True, exist_ok=True)
+        extra.write_text(json.dumps({"fetched": today, "bars": bars},
+                                    ensure_ascii=False), encoding="utf-8")
+        return bars
+
+    # FinMind 失敗 → 退回主 cache(舊總比沒有好)
+    if main:
+        return main
+    raise KeyError(f"查無 {sid}（cache 與 FinMind 都沒有，確認代號）")
 
 
 # ---------- 指標 ----------
