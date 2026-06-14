@@ -7,6 +7,8 @@
   let panel = null;
   let tab = null;          // 收合後的小標籤
   let collapsed = false;   // 收合狀態
+  let liveTimer = null;    // 盤中自動重抓計時器
+  const REFRESH_MS = 20000;// 盤中每 20 秒更新(MIS 即時價約 5~20 秒跳一次)
 
   // 台股代號（含 ETF 0050、興櫃 00400A）；期貨(TXF1!)/美股(NVDA)不符 → 略過。
   // TV 點自選換股「網址不更新」→ 讀畫面即時元件，網址當後備。
@@ -73,6 +75,7 @@
 
   function collapse() {
     collapsed = true;
+    if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }   // 收合停更新
     if (panel) panel.style.display = "none";
     ensureTab().style.display = "block";
     dockPage(false);
@@ -84,6 +87,7 @@
     if (panel) {
       panel.style.display = "";
       dockPage(true);
+      if (lastSid) fetchAndRender(lastSid);   // 展開立刻刷新並續排程
     }
   }
 
@@ -184,6 +188,7 @@
   function bindClose(p) {
     const c = p.querySelector(".kp-close");
     if (c) c.onclick = () => {
+      if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
       p.remove(); panel = null; lastSid = null;
       if (tab) tab.style.display = "none";
       collapsed = false; dockPage(false);
@@ -194,11 +199,20 @@
   }
 
   async function fetchAndRender(sid) {
+    let d;
     try {
-      const r = await fetch(`${API}?sid=${sid}`);
-      render(await r.json());
+      d = await (await fetch(`${API}?sid=${sid}`)).json();
     } catch (e) {
       render({ error: "連不上本機後端 (127.0.0.1:8771)" });
+      return;
+    }
+    render(d);
+    // 盤中且面板展開 → 排程下次自動更新(同檔才續抓)
+    if (liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
+    if (d && d.live && !collapsed) {
+      liveTimer = setTimeout(() => {
+        if (lastSid === sid && panel && !collapsed) fetchAndRender(sid);
+      }, REFRESH_MS);
     }
   }
 

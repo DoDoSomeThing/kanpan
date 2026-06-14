@@ -21,7 +21,7 @@ from flask_cors import CORS
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from core import load_bars, compute_panel, comment, verdict
-from live import market_open, live_price, TW_TZ
+from live import market_open, live_quote, TW_TZ
 from inst import get_inst
 from datetime import datetime
 
@@ -86,15 +86,22 @@ def panel_ep():
 
     live = False
     live_time = None
+    vol_real = False
     if market_open():
-        price, chg = live_price(sid)
-        if price:
-            # 即時價當「今日臨時K」接在歷史後重算（量沿用昨日，標註非今日量）
+        q = live_quote(sid)
+        if q and q["price"]:
+            # 即時報價當「今日臨時K」接在歷史後重算。有 MIS 真開高低量就用真的(量能/CCP/乖離即時)
             last = bars[-1]
+            price = q["price"]
+            vlots = q.get("vol_lots")
+            vol_real = bool(vlots and vlots > 0)
             bars = bars + [{
-                "date": "live", "open": price,
-                "high": max(price, last["close"]), "low": min(price, last["close"]),
-                "close": price, "volume": last["volume"],
+                "date": "live",
+                "open": q.get("open") or price,
+                "high": q.get("high") or max(price, last["close"]),
+                "low": q.get("low") or min(price, last["close"]),
+                "close": price,
+                "volume": (vlots * 1000) if vol_real else last["volume"],  # 張→股 對齊 cache
             }]
             live = True
             live_time = datetime.now(TW_TZ).strftime("%H:%M")
@@ -102,7 +109,8 @@ def panel_ep():
     p = compute_panel(bars)
     if live:
         p["date"] = bars[-2]["date"] + " +即時"
-        p["vol_note"] = "量能為昨日值（盤中累積量未計）"
+        p["vol_note"] = ("盤中累積量(即時)" if vol_real
+                         else "量能為昨日值（盤中累積量未取得）")
     p["sid"] = sid
     p["live"] = live
     p["live_time"] = live_time

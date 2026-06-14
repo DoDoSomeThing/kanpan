@@ -33,9 +33,9 @@ def _f(v):
         return None
 
 
-def live_price(sid: str):
-    """回 (即時價, 漲跌%) 或 (None, None)。上市 tse_ / 上櫃 otc_ 各試。
-    價格來源優先序：z 當前成交 > pz 上一筆撮合 > 最佳買賣價中點（兩筆成交間）。"""
+def live_quote(sid: str):
+    """回盤中即時報價 dict 或 None。含真開高低 + 累積量(MIS o/h/l/v)，讓量能/CCP/乖離也即時。
+    price 來源優先：z 當前成交 > pz 上一筆 > 最佳買賣中點。vol 單位=張(後續×1000轉股對齊cache)。"""
     ex = "|".join(f"{m}_{sid}.tw" for m in ("tse", "otc"))
     url = ("https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
            f"?ex_ch={ex}&json=1&delay=0")
@@ -44,7 +44,7 @@ def live_price(sid: str):
         with urllib.request.urlopen(req, timeout=8, context=_CTX) as r:
             data = json.loads(r.read().decode("utf-8"))
     except Exception:
-        return None, None
+        return None
 
     def first(s):
         for part in str(s or "").split("_"):
@@ -59,12 +59,22 @@ def live_price(sid: str):
             z = _f(d.get("pz"))
         if not z or z <= 0:
             ask, bid = first(d.get("a")), first(d.get("b"))
-            if ask and bid:
-                z = round((ask + bid) / 2, 2)
-            else:
-                z = ask or bid
+            z = round((ask + bid) / 2, 2) if (ask and bid) else (ask or bid)
+        if not z or z <= 0:
+            continue
         y = _f(d.get("y"))
-        if z and z > 0:
-            chg = round((z - y) / y * 100, 2) if y else None
-            return z, chg
-    return None, None
+        return {
+            "price": z,
+            "chg": round((z - y) / y * 100, 2) if y else None,
+            "open": _f(d.get("o")),
+            "high": _f(d.get("h")),
+            "low": _f(d.get("l")),
+            "vol_lots": _f(d.get("v")),   # 累積成交量(張)
+        }
+    return None
+
+
+def live_price(sid: str):
+    """相容舊介面：回 (即時價, 漲跌%)。"""
+    q = live_quote(sid)
+    return (q["price"], q["chg"]) if q else (None, None)
