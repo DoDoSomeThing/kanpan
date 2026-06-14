@@ -352,6 +352,14 @@ def vp_score(t_score, rsi, vol_ratio, c, low60, high60) -> int:
 
 # ---------- 整合：算一檔的面板 ----------
 
+def round_level(price: float):
+    """最近的心理整數關卡（依價位大小調整級距）。"""
+    if not price or price <= 0:
+        return None
+    step = 5 if price < 100 else 10 if price < 1000 else 50
+    return round(price / step) * step
+
+
 def compute_panel(bars: list, i: int = -1) -> dict:
     """對 bars 的第 i 根（預設最新）算完整面板 dict。
     需要至少 ~120 根才有 ma120；不足時部分欄位 None/資料不足。"""
@@ -393,6 +401,31 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     d_up = bool(ma20 and c > ma20)
     reso = resonance(d_up, w_up)
 
+    # 收盤位置 CCP（當日收在高低區間哪 0~100）
+    bn = bars[idx]
+    hl = (bn["high"] - bn["low"]) if (bn["high"] is not None and bn["low"] is not None) else 0
+    ccp = round((c - bn["low"]) / hl * 100) if hl > 0 else None
+    ccp_tag = (None if ccp is None else
+               "收高檔(買盤強收)" if ccp >= 70 else "收低檔(賣壓收尾)" if ccp <= 30 else "收中段(多空拉鋸)")
+
+    # 整數關卡（最近心理關卡 + 距離%）
+    rl = round_level(c)
+    rl_dist = round((c - rl) / rl * 100, 1) if rl else None
+    rl_tag = (None if rl_dist is None else
+              "貼近關卡(效應強)" if abs(rl_dist) < 0.7 else
+              "接近關卡" if abs(rl_dist) < 1.5 else "離關卡遠")
+
+    # 動態 vs 靜態 POC 一致性（短窗 vs 60日窗）
+    dyn_poc = None
+    try:
+        lo2 = max(0, idx - 19)
+        dyn_poc = round(vp_levels(bars[lo2:idx + 1])[0], 2)
+    except (ValueError, ZeroDivisionError):
+        pass
+    poc_consist = round(abs(dyn_poc - poc) / poc * 100, 1) if (dyn_poc and poc) else None
+    poc_tag = (None if poc_consist is None else
+               "共識穩定" if poc_consist < 1.0 else "POC分歧(換手中)")
+
     return {
         "date": bars[idx]["date"], "close": round(c, 2),
         "ma5": ma5, "ma10": ma10, "ma20": ma20, "ma60": ma60, "ma120": ma120,
@@ -405,6 +438,9 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "poc": poc, "vah": vah, "val": val,
         "pos_pct": position_pct(c, low60, high60),
         "high60": high60, "low60": low60,
+        "ccp": ccp, "ccp_tag": ccp_tag,
+        "round_level": rl, "round_dist": rl_dist, "round_tag": rl_tag,
+        "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
         "vp_score": score,
     }
 

@@ -80,6 +80,12 @@ def render(sid, p, stats):
         out.append(f"位置:     60日區間 {p['pos_pct']}%（{hi_lo}）")
     if p.get("vah"):
         out.append(f"參考價位: 壓力 {p['vah']}｜中軸 {p['poc']}｜支撐 {p['val']}")
+    if p.get("ccp") is not None:
+        out.append(f"收盤位置: {p['ccp']}%（{p['ccp_tag']}）")
+    if p.get("round_level"):
+        out.append(f"整數關卡: {p['round_level']}（距 {p['round_dist']:+}%，{p['round_tag']}）")
+    if p.get("poc_consist") is not None:
+        out.append(f"POC一致: 動態{p['dyn_poc']}≈靜態{p['poc']}（差{p['poc_consist']}%，{p['poc_tag']}）")
     inst = p.get("inst")
     if inst:
         out += ["", f"法人買賣超（{inst['date']}）:"]
