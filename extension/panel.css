@@ -30,8 +30,22 @@
 #kp-panel .kp-sym { font-weight: 800; color: #fff; font-size: 1.1em; }
 #kp-panel .kp-live { color: #4fe08a; font-size: .82em; font-weight: 700; margin-left: 6px; }
 #kp-panel .kp-static { color: #6b7596; font-size: .82em; margin-left: 6px; }
+#kp-panel .kp-min { cursor: pointer; color: #6b7596; font-size: 1.05em; margin-left: 8px; }
+#kp-panel .kp-min:hover { color: #fff; }
 #kp-panel .kp-close { cursor: pointer; color: #6b7596; font-size: 1.1em; margin-left: 8px; }
 #kp-panel .kp-close:hover { color: #fff; }
+
+/* 收合後的小標籤（貼右緣，點擊展開） */
+#kp-tab {
+  position: fixed; top: 50%; right: 0; transform: translateY(-50%);
+  z-index: 2147483647; cursor: pointer;
+  background: #0d1330; color: #8fb0ff;
+  border: 1px solid #1e2a4d; border-right: none; border-radius: 9px 0 0 9px;
+  padding: 12px 7px; writing-mode: vertical-rl; letter-spacing: 2px;
+  font: 700 12px/1 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  box-shadow: -5px 0 18px rgba(0, 0, 0, 0.5);
+}
+#kp-tab:hover { color: #fff; background: #16204a; }
 
 #kp-panel .kp-body { padding: 12px 14px 30px; }
 

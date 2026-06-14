@@ -5,6 +5,8 @@
   const PANEL_W = 300;
   let lastSid = null;
   let panel = null;
+  let tab = null;          // 收合後的小標籤
+  let collapsed = false;   // 收合狀態
 
   // 台股代號（含 ETF 0050、興櫃 00400A）；期貨(TXF1!)/美股(NVDA)不符 → 略過。
   // TV 點自選換股「網址不更新」→ 讀畫面即時元件，網址當後備。
@@ -53,8 +55,36 @@
     panel = document.createElement("div");
     panel.id = "kp-panel";
     document.body.appendChild(panel);
-    dockPage(true);
+    if (!collapsed) dockPage(true);
+    if (collapsed) panel.style.display = "none";
     return panel;
+  }
+
+  function ensureTab() {
+    if (tab) return tab;
+    tab = document.createElement("div");
+    tab.id = "kp-tab";
+    tab.textContent = "◀ kanpan";
+    tab.style.display = "none";
+    tab.onclick = expand;
+    document.body.appendChild(tab);
+    return tab;
+  }
+
+  function collapse() {
+    collapsed = true;
+    if (panel) panel.style.display = "none";
+    ensureTab().style.display = "block";
+    dockPage(false);
+  }
+
+  function expand() {
+    collapsed = false;
+    if (tab) tab.style.display = "none";
+    if (panel) {
+      panel.style.display = "";
+      dockPage(true);
+    }
   }
 
   function instRow(name, x) {
@@ -69,7 +99,8 @@
   function head(d, live) {
     return `<div class="kp-head">
         <span class="kp-brand"><span class="rk">🚀</span>kanpan VP</span>
-        <span><span class="kp-sym">${d.sid || ""}</span>${live}<span class="kp-close">✕</span></span>
+        <span><span class="kp-sym">${d.sid || ""}</span>${live}` +
+        `<span class="kp-min" title="收合">▸</span><span class="kp-close" title="關閉">✕</span></span>
       </div>`;
   }
 
@@ -151,7 +182,14 @@
 
   function bindClose(p) {
     const c = p.querySelector(".kp-close");
-    if (c) c.onclick = () => { p.remove(); panel = null; lastSid = null; dockPage(false); };
+    if (c) c.onclick = () => {
+      p.remove(); panel = null; lastSid = null;
+      if (tab) tab.style.display = "none";
+      collapsed = false; dockPage(false);
+    };
+    const m = p.querySelector(".kp-min");
+    if (m) m.onclick = collapse;
+    if (collapsed) p.style.display = "none";
   }
 
   async function fetchAndRender(sid) {
