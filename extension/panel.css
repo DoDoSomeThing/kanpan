@@ -1,68 +1,105 @@
+/* kanpan 面板 — 仿 Evolution Module 卡片質感，響應式 */
 #kp-panel {
   position: fixed;
-  top: 0;
-  right: 0;
+  top: 0; right: 0;
   height: 100vh;
   z-index: 2147483647;
-  width: 300px;
+  width: clamp(300px, 24vw, 360px);
   box-sizing: border-box;
-  font: 12px/1.6 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
-  color: #d7dbe6;
-  background: #0d1226;
-  border-left: 3px solid #3a4a7a;
-  padding: 10px 12px 28px;
-  box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5);
+  font: clamp(11px, 0.78vw, 13px)/1.55 -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+  color: #c9d1e3;
+  background: linear-gradient(180deg, #0c1024 0%, #0a0e1f 100%);
+  border-left: 1px solid #1e2a4d;
+  padding: 0;
+  box-shadow: -8px 0 28px rgba(0, 0, 0, 0.55);
   overflow-y: auto;
   overflow-x: hidden;
 }
-#kp-panel::-webkit-scrollbar { width: 8px; }
-#kp-panel::-webkit-scrollbar-thumb { background: #2a3a66; border-radius: 4px; }
+#kp-panel * { box-sizing: border-box; }
+#kp-panel::-webkit-scrollbar { width: 7px; }
+#kp-panel::-webkit-scrollbar-thumb { background: #233259; border-radius: 4px; }
 
-#kp-panel .kp-title { font-weight: 700; color: #7aa2ff; letter-spacing: .5px; }
-#kp-panel .kp-live { color: #5ff08c; font-size: 10px; font-weight: 700; margin-left: 6px; }
-#kp-panel .kp-static { color: #8893ad; font-size: 10px; margin-left: 6px; }
-#kp-panel .kp-hr { border-top: 1px solid #2a3a66; margin: 8px 0; }
-
-#kp-panel .kp-score {
-  font-size: 16px; padding: 8px 10px; border-radius: 6px; margin: 2px 0;
-  background: rgba(40, 50, 90, 0.55); border-left: 3px solid #7aa2ff;
+/* 頂列 */
+#kp-panel .kp-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 11px 14px; background: #0d1330;
+  border-bottom: 1px solid #1e2a4d; position: sticky; top: 0; z-index: 2;
 }
-#kp-panel .kp-score b { font-size: 22px; }
-#kp-panel .kp-good  { border-left-color: #5ff08c; }
-#kp-panel .kp-good b { color: #5ff08c; }
-#kp-panel .kp-mid   { border-left-color: #f4b400; }
-#kp-panel .kp-mid b { color: #f4b400; }
-#kp-panel .kp-weak  { border-left-color: #ff7a7a; }
-#kp-panel .kp-weak b { color: #ff7a7a; }
-
-#kp-panel .kp-verdict {
-  padding: 9px 11px; border-radius: 6px; margin: 4px 0;
-  background: rgba(40, 50, 90, 0.6); border-left: 4px solid #7aa2ff;
-}
-#kp-panel .kp-verdict .vt { font-size: 16px; font-weight: 800; }
-#kp-panel .kp-verdict .vc { color: #9aa6c4; font-size: 11px; }
-#kp-panel .kp-verdict .va { color: #e6eaf5; font-size: 11.5px; margin-top: 3px; }
-#kp-panel .kp-v-bull { border-left-color: #5ff08c; }
-#kp-panel .kp-v-bull .vt { color: #5ff08c; }
-#kp-panel .kp-v-mid  { border-left-color: #f4b400; }
-#kp-panel .kp-v-mid .vt  { color: #f4b400; }
-#kp-panel .kp-v-bear { border-left-color: #ff7a7a; }
-#kp-panel .kp-v-bear .vt { color: #ff7a7a; }
-#kp-panel .kp-evo { margin: 2px 0; line-height: 1.55; }
-#kp-panel .kp-evo div { margin: 2px 0; }
-#kp-panel .kp-evo .ek { color: #8893ad; }
-#kp-panel .kp-sec { color: #7aa2ff; font-weight: 700; margin: 4px 0 2px; }
-#kp-panel .kp-row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
-#kp-panel .kp-row span:first-child { color: #8893ad; }
-#kp-panel .kp-row span:last-child { color: #e6eaf5; font-variant-numeric: tabular-nums; }
-#kp-panel .kp-note { color: #6b7596; font-size: 10.5px; margin: 2px 0; }
-#kp-panel .kp-comment {
-  background: rgba(40, 50, 90, 0.4); border-radius: 5px; padding: 7px 9px;
-  color: #eef1fa;
-}
-#kp-panel .kp-foot { color: #6b7596; font-size: 10px; font-style: italic; margin-top: 6px; }
-#kp-panel .kp-buy  { color: #ff8a8a !important; }   /* 買超紅(台股習慣) */
-#kp-panel .kp-sell { color: #6fd08c !important; }   /* 賣超綠 */
-#kp-panel .kp-err { color: #ff7a7a; }
-#kp-panel .kp-close { float: right; cursor: pointer; color: #8893ad; }
+#kp-panel .kp-brand { font-weight: 800; color: #8fb0ff; letter-spacing: .3px; }
+#kp-panel .kp-brand .rk { margin-right: 5px; }
+#kp-panel .kp-sym { font-weight: 800; color: #fff; font-size: 1.1em; }
+#kp-panel .kp-live { color: #4fe08a; font-size: .82em; font-weight: 700; margin-left: 6px; }
+#kp-panel .kp-static { color: #6b7596; font-size: .82em; margin-left: 6px; }
+#kp-panel .kp-close { cursor: pointer; color: #6b7596; font-size: 1.1em; margin-left: 8px; }
 #kp-panel .kp-close:hover { color: #fff; }
+
+#kp-panel .kp-body { padding: 12px 14px 30px; }
+
+/* 判讀燈號（主角，依多空染色） */
+#kp-panel .kp-verdict {
+  border-radius: 9px; padding: 12px 13px; margin-bottom: 12px;
+  border: 1px solid #243358;
+  background: linear-gradient(135deg, rgba(40,52,92,.5), rgba(20,26,52,.35));
+}
+#kp-panel .kp-verdict .vt { font-size: 1.45em; font-weight: 800; letter-spacing: .5px; }
+#kp-panel .kp-verdict .vc { color: #97a3c2; font-size: .85em; margin-top: 3px; }
+#kp-panel .kp-verdict .va {
+  margin-top: 8px; padding: 6px 9px; border-radius: 6px;
+  background: rgba(0,0,0,.25); color: #e6eaf5; font-size: .9em;
+}
+#kp-panel .kp-v-bull { border-color: #2f6b46; }
+#kp-panel .kp-v-bull .vt { color: #4fe08a; }
+#kp-panel .kp-v-bull { background: linear-gradient(135deg, rgba(40,110,70,.34), rgba(20,40,30,.25)); }
+#kp-panel .kp-v-mid .vt { color: #f4c000; }
+#kp-panel .kp-v-bear { border-color: #6b2f37; }
+#kp-panel .kp-v-bear .vt { color: #ff7a7a; }
+#kp-panel .kp-v-bear { background: linear-gradient(135deg, rgba(110,47,55,.34), rgba(40,20,24,.25)); }
+
+/* 分段標題（──── 文字 ────） */
+#kp-panel .kp-sec {
+  display: flex; align-items: center; gap: 9px;
+  color: #5d6a8f; font-size: .8em; font-weight: 700;
+  letter-spacing: 1px; margin: 14px 0 7px;
+}
+#kp-panel .kp-sec::before, #kp-panel .kp-sec::after {
+  content: ""; flex: 1; border-top: 1px solid #1e2a4d;
+}
+
+/* A–G 行：字母徽章 + 標籤 + 值 */
+#kp-panel .kp-ag { display: flex; align-items: flex-start; gap: 8px; margin: 5px 0; }
+#kp-panel .kp-ag .bd {
+  flex: 0 0 17px; height: 17px; line-height: 17px; text-align: center;
+  border-radius: 4px; background: #1a234a;
+  color: #8fb0ff; font-size: .78em; font-weight: 800; margin-top: 1px;
+}
+#kp-panel .kp-ag .lbl { flex: 0 0 4.2em; color: #8893ad; }
+#kp-panel .kp-ag .val { flex: 1; color: #dfe4f2; }
+#kp-panel .kp-ag .val .ic { margin-right: 4px; }
+
+/* 資料列 */
+#kp-panel .kp-row { display: flex; justify-content: space-between; gap: 10px; margin: 4px 0; }
+#kp-panel .kp-row span:first-child { color: #8893ad; }
+#kp-panel .kp-row span:last-child { color: #e6eaf5; font-variant-numeric: tabular-nums; text-align: right; }
+#kp-panel .kp-score-n { color: #8fb0ff; font-weight: 800; }
+
+/* 法人 */
+#kp-panel .kp-buy  { color: #ff8a8a !important; }
+#kp-panel .kp-sell { color: #6fd08c !important; }
+
+#kp-panel .kp-comment {
+  background: rgba(40,50,90,.32); border-radius: 6px; padding: 8px 10px;
+  color: #eef1fa; font-size: .92em;
+}
+#kp-panel .kp-note { color: #6b7596; font-size: .82em; margin: 3px 0; }
+#kp-panel .kp-err { color: #ff7a7a; padding: 4px 0; }
+#kp-panel .kp-foot { color: #6b7596; font-size: .8em; font-style: italic; margin-top: 8px; }
+
+/* 收合 A–G 詳節 */
+#kp-panel details { margin: 4px 0; }
+#kp-panel summary {
+  cursor: pointer; color: #8fb0ff; font-size: .85em; list-style: none;
+  padding: 3px 0; user-select: none;
+}
+#kp-panel summary::-webkit-details-marker { display: none; }
+#kp-panel summary::before { content: "▸ "; }
+#kp-panel details[open] summary::before { content: "▾ "; }

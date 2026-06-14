@@ -38,11 +38,12 @@
   }
 
   function dockPage(on) {
-    // 真分割：網頁縮左 PANEL_W，面板補右邊（不蓋住 TV），關閉還原
+    // 真分割：網頁縮左 = 面板實際寬度（clamp 響應式），面板補右邊，關閉還原
+    const w = (on && panel) ? Math.round(panel.getBoundingClientRect().width) || PANEL_W : PANEL_W;
     document.documentElement.style.setProperty(
-      "margin-right", on ? PANEL_W + "px" : "", "important");
+      "margin-right", on ? w + "px" : "", "important");
     document.body.style.setProperty(
-      "width", on ? `calc(100vw - ${PANEL_W}px)` : "", "important");
+      "width", on ? `calc(100vw - ${w}px)` : "", "important");
     document.body.style.setProperty("overflow-x", on ? "hidden" : "", "important");
     setTimeout(() => window.dispatchEvent(new Event("resize")), 50);
   }
@@ -56,12 +57,6 @@
     return panel;
   }
 
-  function scoreColor(s) {
-    if (s >= 70) return "kp-good";
-    if (s >= 50) return "kp-mid";
-    return "kp-weak";
-  }
-
   function instRow(name, x) {
     // 一列一法人：外資: +3,927 張（連買3日），買紅賣綠(台股習慣)
     const cls = x.net > 0 ? "kp-buy" : x.net < 0 ? "kp-sell" : "";
@@ -71,85 +66,92 @@
     return `<div class="kp-row"><span>${name}</span><span class="${cls}">${s}</span></div>`;
   }
 
+  function head(d, live) {
+    return `<div class="kp-head">
+        <span class="kp-brand"><span class="rk">🚀</span>kanpan VP</span>
+        <span><span class="kp-sym">${d.sid || ""}</span>${live}<span class="kp-close">✕</span></span>
+      </div>`;
+  }
+
   function render(d) {
     const p = ensurePanel();
     if (d.error) {
-      p.innerHTML = `<span class="kp-close">✕</span>
-        <div class="kp-title">kanpan</div><div class="kp-hr"></div>
+      p.innerHTML = head(d, "") + `<div class="kp-body">
         <div class="kp-err">${d.error}</div>
-        <div class="kp-foot">後端沒開？跑 python api.py</div>`;
-    } else {
-      const live = d.live
-        ? `<span class="kp-live">● 即時 ${d.live_time}</span>`
-        : `<span class="kp-static">收盤</span>`;
-      const b = d.hist_bucket;
-      const hist = (b && b.n > 0) ? `
-        <div class="kp-sec">歷史統計（分數 ${b.lo}~${b.hi} 的過去表現）</div>
-        <div class="kp-row"><span>樣本數</span><span>${b.n.toLocaleString()}</span></div>
-        <div class="kp-row"><span>5/10/20日勝率</span><span>${b.win5}% / ${b.win10}% / ${b.win20}%</span></div>
-        <div class="kp-row"><span>平均報酬(20日)</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
-        <div class="kp-row"><span>最大回撤</span><span class="kp-weak">${b.mdd}%</span></div>
-        <div class="kp-note">${b.period}</div>`
-        : `<div class="kp-note">歷史統計未產生（research/score_history.py）</div>`;
-      const posTag = d.pos_pct == null ? "" :
-        d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
-      const v = d.verdict;
-      const vCls = v ? (v.net >= 3 ? "kp-v-bull" : v.net <= -3 ? "kp-v-bear" : "kp-v-mid") : "";
-      const verdict = v ? `
-        <div class="kp-verdict ${vCls}">
-          <div class="vt">${v.light} ${v.tone}</div>
-          <div class="vc">${v.conf}</div>
-          <div class="va">📋 ${v.action}</div>
-        </div>` : "";
-      const evoIco = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";
-      const E = d.evo || {};
-      const evoRows = ["A", "B", "C_top", "C_bot", "D", "E", "F", "G"]
-        .filter(k => E[k])
-        .map(k => `<div>${evoIco(E[k].ok)} <span class="ek">${E[k].k}</span>：${E[k].v}</div>`)
-        .join("");
-      const evo = evoRows ? `
-        <div class="kp-hr"></div>
-        <div class="kp-sec">A–G 拆解</div>
-        <div class="kp-evo">${evoRows}</div>` : "";
-      p.innerHTML = `
-        <span class="kp-close">✕</span>
-        <div class="kp-title">kanpan 看盤　<b>${d.sid}</b> ${live}</div>
-        <div class="kp-hr"></div>
-        ${verdict}
-        <div class="kp-score ${scoreColor(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="kp-note"> /100</span></div>
-        <div class="kp-note">趨勢40%+動能20%+量能20%+位置20%</div>
-        <div class="kp-note">${d.date}　收盤/現價 ${d.close}</div>
-        <div class="kp-hr"></div>
-        ${hist}
-        <div class="kp-hr"></div>
-        <div class="kp-row"><span>趨勢分數</span><span>${d.trend_score}/100（均線結構）</span></div>
-        <div class="kp-row"><span>結構</span><span><b>${d.structure}</b></span></div>
-        <div class="kp-row"><span>週線</span><span>${d.weekly ?? "—"}</span></div>
-        <div class="kp-row"><span>日週共振</span><span>${d.resonance ?? "—"}</span></div>
-        <div class="kp-row"><span>動能</span><span>RSI ${d.rsi ?? "—"}　${d.momentum}</span></div>
-        <div class="kp-row"><span>量能</span><span>${d.vol_ratio ?? "—"}倍 ${d.vol_tag}</span></div>
-        <div class="kp-row"><span>量堆積</span><span>${d.skew_tag ?? "—"}</span></div>
-        <div class="kp-row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
-        ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}
-        ${d.ccp != null ? `<div class="kp-row"><span>收盤位置</span><span>${d.ccp}% ${d.ccp_tag}</span></div>` : ""}
-        ${d.round_level ? `<div class="kp-row"><span>整數關卡</span><span>${d.round_level}（${d.round_dist > 0 ? "+" : ""}${d.round_dist}% ${d.round_tag}）</span></div>` : ""}
-        ${d.poc_consist != null ? `<div class="kp-row"><span>POC一致</span><span>動${d.dyn_poc}≈靜${d.poc} ${d.poc_tag}</span></div>` : ""}
-        ${evo}
-        ${d.inst ? `
-        <div class="kp-hr"></div>
-        <div class="kp-sec">法人買賣超（${d.inst.date}）</div>
-        ${instRow("外資", d.inst.foreign)}
-        ${instRow("投信", d.inst.trust)}
-        ${instRow("自營", d.inst.dealer)}` : ""}
-        ${d.vol_note ? `<div class="kp-note">${d.vol_note}</div>` : ""}
-        <div class="kp-hr"></div>
-        <div class="kp-sec">評語</div>
-        <div class="kp-comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>`;
+        <div class="kp-foot">後端沒開？跑 python api.py</div></div>`;
+      bindClose(p);
+      return;
     }
-    p.querySelector(".kp-close").onclick = () => {
-      p.remove(); panel = null; lastSid = null;
-      dockPage(false);
-    };
+    const live = d.live
+      ? `<span class="kp-live">● 即時 ${d.live_time}</span>`
+      : `<span class="kp-static">收盤</span>`;
+
+    // 判讀燈號（主角）
+    const v = d.verdict;
+    const vCls = v ? (v.net >= 3 ? "kp-v-bull" : v.net <= -3 ? "kp-v-bear" : "kp-v-mid") : "";
+    const verdict = v ? `
+      <div class="kp-verdict ${vCls}">
+        <div class="vt">${v.light} ${v.tone}</div>
+        <div class="vc">${v.conf}　|　分數 ${d.vp_score}/100　${d.structure}</div>
+        <div class="va">📋 ${v.action}</div>
+      </div>` : "";
+
+    // A–G 拆解（字母徽章；含 D收盤位置/E整數/F RollingPOC，故下方不再重複）
+    const ico = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";
+    const E = d.evo || {};
+    const badge = { A: "A", B: "B", C_top: "C", C_bot: "C", D: "D", E: "E", F: "F", G: "G" };
+    const agRows = ["A", "B", "C_top", "C_bot", "D", "E", "F", "G"]
+      .filter(k => E[k])
+      .map(k => `<div class="kp-ag"><span class="bd">${badge[k]}</span>` +
+                `<span class="lbl">${E[k].k}</span>` +
+                `<span class="val"><span class="ic">${ico(E[k].ok)}</span>${E[k].v}</span></div>`)
+      .join("");
+    const ag = agRows ? `<div class="kp-sec">A–G 拆解</div>${agRows}` : "";
+
+    // 數據（精簡：不重複 A–G 已涵蓋的 收盤位置/整數/POC一致）
+    const posTag = d.pos_pct == null ? "" :
+      d.pos_pct >= 70 ? "偏高" : d.pos_pct <= 30 ? "偏低" : "中段";
+    const data = `
+      <div class="kp-sec">數據</div>
+      <div class="kp-row"><span>動能</span><span>RSI ${d.rsi ?? "—"}　${d.momentum}</span></div>
+      <div class="kp-row"><span>量能</span><span>${d.vol_ratio ?? "—"}x ${d.vol_tag}</span></div>
+      <div class="kp-row"><span>位置(60日)</span><span>${d.pos_pct ?? "—"}% ${posTag}</span></div>
+      <div class="kp-row"><span>週線/共振</span><span>${(d.weekly || "—").replace(/[()（）].*/, "")}｜${d.resonance ?? "—"}</span></div>
+      ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}`;
+
+    // 歷史統計（收合）
+    const b = d.hist_bucket;
+    const hist = (b && b.n > 0) ? `
+      <details><summary>歷史統計（分數 ${b.lo}~${b.hi}）</summary>
+        <div class="kp-row"><span>樣本數</span><span>${b.n.toLocaleString()}</span></div>
+        <div class="kp-row"><span>5/10/20日勝率</span><span>${b.win5}/${b.win10}/${b.win20}%</span></div>
+        <div class="kp-row"><span>平均報酬20日</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
+        <div class="kp-row"><span>最大回撤</span><span class="kp-sell">${b.mdd}%</span></div>
+        <div class="kp-note">${b.period}</div></details>` : "";
+
+    // 法人
+    const inst = d.inst ? `
+      <div class="kp-sec">法人（${d.inst.date}）</div>
+      ${instRow("外資", d.inst.foreign)}
+      ${instRow("投信", d.inst.trust)}
+      ${instRow("自營", d.inst.dealer)}` : "";
+
+    p.innerHTML = head(d, live) + `<div class="kp-body">
+      ${verdict}
+      ${ag}
+      ${data}
+      ${inst}
+      ${d.vol_note ? `<div class="kp-note">${d.vol_note}</div>` : ""}
+      ${hist}
+      <div class="kp-sec">評語</div>
+      <div class="kp-comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>
+    </div>`;
+    bindClose(p);
+  }
+
+  function bindClose(p) {
+    const c = p.querySelector(".kp-close");
+    if (c) c.onclick = () => { p.remove(); panel = null; lastSid = null; dockPage(false); };
   }
 
   async function fetchAndRender(sid) {
