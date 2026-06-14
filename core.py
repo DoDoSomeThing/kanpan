@@ -574,22 +574,33 @@ def verdict(p, win20_rate=None):
     if pp is not None and (pp > 95 or pp < 15):
         net -= 1
 
-    if net >= 5 and p["vp_score"] >= 72:
-        light, tone, sig = "🟢", "強多頭訊號", "多項共振，偏多看待"
-    elif net >= 3:
-        light, tone, sig = "🟢", "多頭有利", "多重共振，可評估"
+    # 嚴格：光加分不夠，要結構/分數/不過熱/不追高 同時成立才喊偏多
+    pp = p.get("pos_pct")
+    not_hot = rsi is None or rsi < 78
+    not_chase = pp is None or pp <= 90          # 貼頂(>90%)不喊進場
+    strong = (net >= 6 and p["vp_score"] >= 78
+              and st in ("主升段", "突破") and not_hot and not_chase)
+    favor = (net >= 4 and p["vp_score"] >= 68
+             and st in ("主升段", "多頭", "突破", "起漲") and not_hot)
+
+    if strong:
+        light, tone, sig = "🟢", "強多頭訊號", "結構強＋多項共振，偏多看待"
+    elif favor:
+        light, tone, sig = "🟢", "多頭有利", "偏多但別追高，回測再評估"
     elif net <= -3:
         light, tone, sig = "🔴", "偏空轉弱", "結構轉弱，避開／減碼"
     elif net <= -1:
         light, tone, sig = "🟠", "偏弱待觀察", "訊號偏空，等止穩"
     else:
-        light, tone, sig = "🟡", "方向待定", "部分共振，等確認"
+        light, tone, sig = "🟡", "方向待定", "條件不齊，等確認"
 
     conf = (f"此分數區間過去20日勝率 {win20_rate}%" if win20_rate is not None
             else "（回測勝率未產生）")
     action = sig
-    if net >= 3 and p.get("val"):
+    if strong and p.get("val"):
         action = f"{sig}；參考支撐 {p['val']}（失守減碼）"
+    elif favor and p.get("poc"):
+        action = f"{sig}；回測 {p['poc']} 站穩再看"
     elif net <= -3 and p.get("vah"):
         action = f"{sig}；反彈壓力 {p['vah']}"
     return {"light": light, "tone": tone, "sig": sig, "net": net,

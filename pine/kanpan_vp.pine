@@ -142,12 +142,18 @@ net := net + (na(ccp) ? 0 : ccp >= 70 ? 1 : ccp <= 30 ? -1 : 0)
 net := net + (dynPoc > poc ? 1 : dynPoc < poc ? -1 : 0)
 net := net + (na(posPct) ? 0 : (posPct > 95 or posPct < 15) ? -1 : 0)
 
+// 嚴格：光加分不夠，要結構/分數/不過熱/不追高 同時成立
+notHot   = na(rsi) or rsi < 78
+notChase = na(posPct) or posPct <= 90
+strongBull = net >= 6 and vpScore >= 78 and (structure == "主升段" or structure == "突破") and notHot and notChase
+favorBull  = net >= 4 and vpScore >= 68 and (structure == "主升段" or structure == "多頭" or structure == "突破" or structure == "起漲") and notHot
+
 tone = "🟡 方向待定"
 tcol = color.yellow
-if net >= 5 and vpScore >= 72
+if strongBull
     tone := "🟢 強多頭訊號"
     tcol := color.lime
-else if net >= 3
+else if favorBull
     tone := "🟢 多頭有利"
     tcol := color.green
 else if net <= -3
@@ -158,7 +164,7 @@ else if net <= -1
     tcol := color.orange
 
 // ---------- K線箭頭：net 跨門檻轉多/轉空 ----------
-bullSig = net >= 3 and net[1] < 3
+bullSig = net >= 4 and net[1] < 4
 bearSig = net <= -3 and net[1] > -3
 plotshape(showSignals and bullSig, "轉多", shape.triangleup,   location.belowbar, color.lime, size = size.small, text = "多")
 plotshape(showSignals and bearSig, "轉空", shape.triangledown, location.abovebar, color.red,  size = size.small, text = "空")
