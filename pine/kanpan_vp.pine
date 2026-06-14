@@ -163,12 +163,21 @@ bearSig = net <= -3 and net[1] > -3
 plotshape(showSignals and bullSig, "轉多", shape.triangleup,   location.belowbar, color.lime, size = size.small, text = "多")
 plotshape(showSignals and bearSig, "轉空", shape.triangledown, location.abovebar, color.red,  size = size.small, text = "空")
 
-// ---------- 均線 + VP 軌道 ----------
+// ---------- 均線 + VP 劃線（價值區帶填色 + POC + 整數關卡 + 進場參考） ----------
 plot(ma20, "MA20", color.new(color.yellow, 0), 1)
 plot(ma60, "MA60", color.new(#2962ff, 0), 1)
-plot(showLevels ? poc : na, "POC中軸", color.new(color.fuchsia, 0), 2, plot.style_linebr)
-plot(showLevels ? vah : na, "VAH壓力", color.new(color.red, 40),    1, plot.style_linebr)
-plot(showLevels ? val : na, "VAL支撐", color.new(color.green, 40),  1, plot.style_linebr)
+
+pVah = plot(showLevels ? vah : na, "VAH壓力", color.new(color.red, 30),     1)
+pVal = plot(showLevels ? val : na, "VAL支撐", color.new(color.green, 30),   1)
+fill(pVah, pVal, color = color.new(#7aa2ff, 92), title = "價值區帶")
+plot(showLevels ? poc : na, "POC中軸", color.new(color.fuchsia, 0), 2)
+
+// 整數關卡（階梯線，價位變才跳階）
+plot(showLevels ? roundLvl : na, "整數關卡", color.new(color.gray, 35), 1, style = plot.style_stepline)
+
+// 進場參考：偏多(net>=3)時把支撐畫粗綠線(失守減碼)；偏空(net<=-3)畫粗紅壓力
+plot(showLevels and net >= 3 ? val : na, "進場參考支撐", color.new(color.lime, 0), 3)
+plot(showLevels and net <= -3 ? vah : na, "反彈壓力", color.new(color.red, 0), 3)
 
 // ---------- 右下面板 (A–G) ----------
 f_ico(int ok) => ok == 1 ? "✅" : ok == -1 ? "🔴" : "⚪"
