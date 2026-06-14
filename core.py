@@ -426,6 +426,14 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     poc_tag = (None if poc_consist is None else
                "共識穩定" if poc_consist < 1.0 else "POC分歧(換手中)")
 
+    # 乖離率（價離均線多遠）：月線MA20 + 季線MA60
+    bias20 = round((c - ma20) / ma20 * 100, 1) if ma20 else None
+    bias60 = round((c - ma60) / ma60 * 100, 1) if ma60 else None
+    bias_tag = (None if bias20 is None else
+                "乖離過大(追高險)" if bias20 >= 25 else
+                "正乖離偏大" if bias20 >= 15 else
+                "超跌(負乖離大)" if bias20 <= -15 else "乖離正常")
+
     p = {
         "date": bars[idx]["date"], "close": round(c, 2),
         "open": round(bn["open"], 2) if bn.get("open") is not None else None,
@@ -442,6 +450,7 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "ccp": ccp, "ccp_tag": ccp_tag,
         "round_level": rl, "round_dist": rl_dist, "round_tag": rl_tag,
         "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
+        "bias20": bias20, "bias60": bias60, "bias_tag": bias_tag,
         "vp_score": score,
     }
     p["evo"] = evolution(bars, idx, p)
@@ -573,13 +582,16 @@ def verdict(p, win20_rate=None):
     pp = p.get("pos_pct")
     if pp is not None and (pp > 95 or pp < 15):
         net -= 1
+    b20 = p.get("bias20")
+    if b20 is not None and b20 >= 25:           # 乖離過大=追高過熱，扣分
+        net -= 1
 
-    # 嚴格：光加分不夠，要結構/分數/不過熱/不追高 同時成立才喊偏多
-    pp = p.get("pos_pct")
+    # 嚴格：光加分不夠，要結構/分數/不過熱/不追高/乖離沒爆 同時成立才喊偏多
     not_hot = rsi is None or rsi < 78
     not_chase = pp is None or pp <= 90          # 貼頂(>90%)不喊進場
+    not_overext = b20 is None or b20 < 22       # 乖離太大不喊強多頭
     strong = (net >= 6 and p["vp_score"] >= 78
-              and st in ("主升段", "突破") and not_hot and not_chase)
+              and st in ("主升段", "突破") and not_hot and not_chase and not_overext)
     favor = (net >= 4 and p["vp_score"] >= 68
              and st in ("主升段", "多頭", "突破", "起漲") and not_hot)
 

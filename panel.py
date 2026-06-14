@@ -83,6 +83,8 @@ def render(sid, p, stats):
     if p["pos_pct"] is not None:
         hi_lo = "偏高" if p["pos_pct"] >= 70 else "偏低" if p["pos_pct"] <= 30 else "中段"
         out.append(f"位置:     60日區間 {p['pos_pct']}%（{hi_lo}）")
+    if p.get("bias20") is not None:
+        out.append(f"乖離率:   月線{p['bias20']:+}%｜季線{p['bias60']:+}%（{p['bias_tag']}）")
     if p.get("vah"):
         out.append(f"參考價位: 壓力 {p['vah']}｜中軸 {p['poc']}｜支撐 {p['val']}")
     if p.get("ccp") is not None:

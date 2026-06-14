@@ -147,6 +147,7 @@
       <div class="kp-row"><span>動能</span><span>RSI ${d.rsi ?? "—"}　${d.momentum}</span></div>
       <div class="kp-row"><span>量能</span><span>${d.vol_ratio ?? "—"}x ${d.vol_tag}</span></div>
       <div class="kp-row"><span>位置(60日)</span><span>${d.pos_pct ?? "—"}% ${posTag}</span></div>
+      ${d.bias20 != null ? `<div class="kp-row"><span>乖離(月/季)</span><span>${d.bias20 > 0 ? "+" : ""}${d.bias20}% / ${d.bias60 > 0 ? "+" : ""}${d.bias60 ?? "—"}%　${d.bias_tag}</span></div>` : ""}
       <div class="kp-row"><span>週線/共振</span><span>${(d.weekly || "—").replace(/[()（）].*/, "")}｜${d.resonance ?? "—"}</span></div>
       ${d.vah ? `<div class="kp-row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}`;
 

@@ -103,6 +103,11 @@ rng    = high - low
 upWick = rng > 0 ? (high - math.max(open, close)) / rng : na
 dnWick = rng > 0 ? (math.min(open, close) - low) / rng : na
 
+// 乖離率（價離均線多遠）：月線MA20 + 季線MA60
+bias20 = ma20 > 0 ? (close - ma20) / ma20 * 100 : na
+bias60 = ma60 > 0 ? (close - ma60) / ma60 * 100 : na
+biasTag = na(bias20) ? "" : bias20 >= 25 ? "乖離過大,追高險" : bias20 >= 15 ? "正乖離偏大" : bias20 <= -15 ? "超跌" : "正常"
+
 // ---------- 結構 ----------
 bullStack = ma20 > ma60
 aboveMa20 = close > ma20
@@ -141,11 +146,13 @@ net := net + (not na(volRatio) and volRatio >= 1.5 and net > 0 ? 1 : 0)
 net := net + (na(ccp) ? 0 : ccp >= 70 ? 1 : ccp <= 30 ? -1 : 0)
 net := net + (dynPoc > poc ? 1 : dynPoc < poc ? -1 : 0)
 net := net + (na(posPct) ? 0 : (posPct > 95 or posPct < 15) ? -1 : 0)
+net := net + (not na(bias20) and bias20 >= 25 ? -1 : 0)
 
-// 嚴格：光加分不夠，要結構/分數/不過熱/不追高 同時成立
-notHot   = na(rsi) or rsi < 78
-notChase = na(posPct) or posPct <= 90
-strongBull = net >= 6 and vpScore >= 78 and (structure == "主升段" or structure == "突破") and notHot and notChase
+// 嚴格：光加分不夠，要結構/分數/不過熱/不追高/乖離沒爆 同時成立
+notHot    = na(rsi) or rsi < 78
+notChase  = na(posPct) or posPct <= 90
+notOverext = na(bias20) or bias20 < 22
+strongBull = net >= 6 and vpScore >= 78 and (structure == "主升段" or structure == "突破") and notHot and notChase and notOverext
 favorBull  = net >= 4 and vpScore >= 68 and (structure == "主升段" or structure == "多頭" or structure == "突破" or structure == "起漲") and notHot
 
 tone = "🟡 方向待定"
@@ -188,7 +195,7 @@ plot(showLevels and net <= -3 ? vah : na, "反彈壓力", color.new(color.red, 0
 // ---------- 右下面板 (A–G) ----------
 f_ico(int ok) => ok == 1 ? "✅" : ok == -1 ? "🔴" : "⚪"
 
-var table tb = table.new(position.bottom_right, 2, 12, frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
+var table tb = table.new(position.bottom_right, 2, 13, frame_color = color.new(color.gray, 40), frame_width = 1, border_color = color.new(color.gray, 70), border_width = 1)
 
 if showPanel and barstate.islast
     bg = color.new(#0d1226, 10)
@@ -253,3 +260,8 @@ if showPanel and barstate.islast
     // 位置
     table.cell(tb, 0, 11, "位置 / 週線", text_color = #8893ad, bgcolor = bg, text_size = size.small)
     table.cell(tb, 1, 11, (na(posPct) ? "—" : str.tostring(posPct, "#.#") + "%") + "｜" + (wUp ? "週多" : "週空"), text_color = fg, bgcolor = bg, text_size = size.small)
+
+    // 乖離率
+    biasCol = na(bias20) ? fg : bias20 >= 25 ? color.red : bias20 <= -15 ? color.lime : fg
+    table.cell(tb, 0, 12, "乖離 月/季", text_color = #8893ad, bgcolor = bg, text_size = size.small)
+    table.cell(tb, 1, 12, na(bias20) ? "—" : (bias20 >= 0 ? "+" : "") + str.tostring(bias20, "#.#") + "% / " + (bias60 >= 0 ? "+" : "") + str.tostring(bias60, "#.#") + "%  " + biasTag, text_color = biasCol, bgcolor = bg, text_size = size.small)
