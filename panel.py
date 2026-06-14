@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import load_bars, compute_panel, comment
+from core import load_bars, compute_panel, comment, verdict
 from inst import get_inst, fmt_row
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -50,6 +50,11 @@ def bucket_label(score, stats):
 def render(sid, p, stats):
     line = "=" * 30
     out = [line, f"  kanpan 看盤 — {sid}", line, ""]
+    # 判讀燈號（綁回測勝率）
+    b0 = bucket_label(p["vp_score"], stats) if stats else None
+    v = verdict(p, b0["win20"] if (b0 and b0["n"] > 0) else None)
+    out += [f"{v['light']} {v['tone']}　{v['conf']}",
+            f"操作研判: {v['action']}", ""]
     out.append(f"當前分數: {p['vp_score']} / 100")
     out.append("（趨勢40% + 動能20% + 量能20% + 位置20%）")
     out.append(f"資料日: {p['date']}　收盤 {p['close']}")
@@ -92,6 +97,14 @@ def render(sid, p, stats):
         out.append("  " + fmt_row("外資", inst["foreign"]))
         out.append("  " + fmt_row("投信", inst["trust"]))
         out.append("  " + fmt_row("自營", inst["dealer"]))
+    evo = p.get("evo") or {}
+    if evo:
+        out += ["", "-" * 30, "A–G 拆解（仿 Evolution Module）:"]
+        ico = lambda ok: "✅" if ok is True else "🔴" if ok is False else "⚪"
+        for key in ("A", "B", "C_top", "C_bot", "D", "E", "F", "G"):
+            e = evo.get(key)
+            if e:
+                out.append(f"  {ico(e['ok'])} {e['k']}: {e['v']}")
     out += ["", "-" * 30, "評語:", comment(p), "", line]
     return "\n".join(out)
 

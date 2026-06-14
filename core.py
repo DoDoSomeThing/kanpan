@@ -426,8 +426,9 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     poc_tag = (None if poc_consist is None else
                "共識穩定" if poc_consist < 1.0 else "POC分歧(換手中)")
 
-    return {
+    p = {
         "date": bars[idx]["date"], "close": round(c, 2),
+        "open": round(bn["open"], 2) if bn.get("open") is not None else None,
         "ma5": ma5, "ma10": ma10, "ma20": ma20, "ma60": ma60, "ma120": ma120,
         "trend_score": t,
         "structure": st,
@@ -443,6 +444,156 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
         "vp_score": score,
     }
+    p["evo"] = evolution(bars, idx, p)
+    return p
+
+
+# ---------- Evolution Module v2.0：A–G 拆解 + 判讀燈號 ----------
+# 仿作者 YH VP Pro 面板。部分行(B/C/G)是日K近似(無盤中tick)，標清楚「日K近似」。
+
+def _excess(bar):
+    """日K近似 Excess：上/下影線占全幅比例。
+    長上影=頂部拒絕(賣壓)，長下影=底部承接(買盤)。非真tick Excess。"""
+    h, l, o, c = bar.get("high"), bar.get("low"), bar.get("open"), bar.get("close")
+    if None in (h, l, o, c) or h <= l:
+        return None, None
+    rng = h - l
+    bh, bl = max(o, c), min(o, c)
+    return round((h - bh) / rng, 2), round((bl - l) / rng, 2)
+
+
+def evolution(bars, idx, p):
+    """A–G 七行拆解。回 {行key: {k名稱, ok燈號(True綠/False紅/None黃), v文字}}。"""
+    bn = bars[idx]
+    op, poc, vah, val = p.get("open"), p["poc"], p["vah"], p["val"]
+    evo = {}
+
+    # A POC偏離度：開盤 vs 核心價
+    if op and poc:
+        d = round((op - poc) / poc * 100, 2)
+        evo["A"] = {"k": "POC偏離度", "ok": abs(d) < 1.5,
+                    "v": f"開盤{'貼近' if abs(d) < 1.5 else '偏離'}核心價 {abs(d)}%｜"
+                         f"{'均衡開盤' if abs(d) < 1.5 else ('開高走勢' if d > 0 else '開低走勢')}"}
+
+    # B 市場狀態：VA寬度 動態(20) vs 靜態(60)（日K近似）
+    try:
+        win20 = bars[max(0, idx - 19):idx + 1]
+        p20, vh20, vl20, _ = vp_levels(win20)
+        w20, w60 = (vh20 - vl20) / p20, (vah - val) / poc
+        btag = ("VA擴張,波動放大" if w20 > w60 * 1.15
+                else "VA收斂,盤整待變" if w20 < w60 * 0.85 else "VA持平,方向不明")
+        evo["B"] = {"k": "市場狀態", "ok": None, "v": f"{btag}（日K近似）"}
+    except (ValueError, ZeroDivisionError, TypeError):
+        pass
+
+    # C 頂/底端結構：日影線拒絕（近似，非tick Excess）
+    up, dn = _excess(bn)
+    if up is not None:
+        evo["C_top"] = {"k": "頂端結構", "ok": up < 0.4,
+                        "v": ("頂端正常,上方無異常壓力" if up < 0.4
+                              else f"上影拒絕 {int(up * 100)}%,頂部賣壓（日K近似）")}
+        evo["C_bot"] = {"k": "底端結構", "ok": (dn >= 0.4 or dn < 0.15),
+                        "v": (f"下影承接 {int(dn * 100)}%,底部買盤（日K近似）" if dn >= 0.4
+                              else "底端正常,下方無異常")}
+
+    # D 買賣方向：CCP 收盤位置
+    if p["ccp"] is not None:
+        evo["D"] = {"k": "買賣方向", "ok": p["ccp"] >= 50,
+                    "v": f"收盤 CCP={p['ccp']}%｜{p['ccp_tag']}"}
+
+    # E 整數共振
+    if p["round_level"]:
+        evo["E"] = {"k": "整數關卡", "ok": abs(p["round_dist"]) < 1.5,
+                    "v": f"{p['round_level']}（{p['round_dist']:+}%，{p['round_tag']}）"}
+
+    # F Rolling POC：動態 vs 靜態（共識移動方向）
+    if p["dyn_poc"] and poc:
+        if p["dyn_poc"] > poc:
+            ftag, fok = "共識上移,多方重心成形", True
+        elif p["dyn_poc"] < poc:
+            ftag, fok = "共識下移,空方重心成形", False
+        else:
+            ftag, fok = "共識穩定", None
+        evo["F"] = {"k": "Rolling POC", "ok": fok,
+                    "v": f"動態{p['dyn_poc']} vs 靜態{poc}｜{ftag}"}
+
+    # G 價位匯聚：日POC + 動態POC + 整數關卡 聚攏度（誠實版，非AVWAP/H1）
+    levels = [x for x in (poc, p["dyn_poc"], p["round_level"]) if x]
+    if len(levels) >= 2 and poc:
+        spread = round((max(levels) - min(levels)) / poc * 100, 1)
+        near = sum(1 for x in levels if abs(x - poc) / poc * 100 < 1.5)
+        evo["G"] = {"k": "價位匯聚", "ok": spread < 1.5,
+                    "v": (f"三層匯聚 POC/動態/關卡集中 {spread}%,關鍵價位" if spread < 1.5
+                          else f"{near}層靠近,價位分散 {spread}%")}
+    return evo
+
+
+def verdict(p, win20_rate=None):
+    """判讀燈號：綜合結構/動能/量價/共識 → 偏多偏空現況研判。
+    信心綁回測勝率(win20_rate)，沒數字不喊信心。描述現況，非保證獲利。"""
+    st = p["structure"]
+    net = 0
+    if st in ("主升段", "突破"):
+        net += 2
+    elif st in ("多頭", "起漲"):
+        net += 1
+    elif st == "空頭":
+        net -= 2
+    elif st == "底部":
+        net -= 1
+    if p["trend_score"] >= 80:
+        net += 1
+    elif p["trend_score"] <= 20:
+        net -= 1
+    reso = p.get("resonance") or ""
+    if "共振" in reso and "偏多" in reso:
+        net += 1
+    elif "共振" in reso and "偏空" in reso:
+        net -= 1
+    rsi = p.get("rsi")
+    if rsi is not None:
+        if rsi > 78:
+            net -= 1
+        elif 50 <= rsi <= 70:
+            net += 1
+        elif rsi < 40:
+            net -= 1
+    if p["vol_tag"] == "放量" and net > 0:
+        net += 1
+    if p["ccp"] is not None:
+        if p["ccp"] >= 70:
+            net += 1
+        elif p["ccp"] <= 30:
+            net -= 1
+    if p["dyn_poc"] and p["poc"]:
+        if p["dyn_poc"] > p["poc"]:
+            net += 1
+        elif p["dyn_poc"] < p["poc"]:
+            net -= 1
+    pp = p.get("pos_pct")
+    if pp is not None and (pp > 95 or pp < 15):
+        net -= 1
+
+    if net >= 5 and p["vp_score"] >= 72:
+        light, tone, sig = "🟢", "強多頭訊號", "多項共振，偏多看待"
+    elif net >= 3:
+        light, tone, sig = "🟢", "多頭有利", "多重共振，可評估"
+    elif net <= -3:
+        light, tone, sig = "🔴", "偏空轉弱", "結構轉弱，避開／減碼"
+    elif net <= -1:
+        light, tone, sig = "🟠", "偏弱待觀察", "訊號偏空，等止穩"
+    else:
+        light, tone, sig = "🟡", "方向待定", "部分共振，等確認"
+
+    conf = (f"此分數區間過去20日勝率 {win20_rate}%" if win20_rate is not None
+            else "（回測勝率未產生）")
+    action = sig
+    if net >= 3 and p.get("val"):
+        action = f"{sig}；參考支撐 {p['val']}（失守減碼）"
+    elif net <= -3 and p.get("vah"):
+        action = f"{sig}；反彈壓力 {p['vah']}"
+    return {"light": light, "tone": tone, "sig": sig, "net": net,
+            "conf": conf, "action": action}
 
 
 # ---------- 評語（規則式，非 LLM、非建議）----------

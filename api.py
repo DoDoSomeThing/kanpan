@@ -20,7 +20,7 @@ from flask_cors import CORS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from core import load_bars, compute_panel, comment
+from core import load_bars, compute_panel, comment, verdict
 from live import market_open, live_price, TW_TZ
 from inst import get_inst
 from datetime import datetime
@@ -106,7 +106,9 @@ def panel_ep():
     p["sid"] = sid
     p["live"] = live
     p["live_time"] = live_time
-    p["hist_bucket"] = bucket_of(p["vp_score"])
+    b = bucket_of(p["vp_score"])
+    p["hist_bucket"] = b
+    p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     try:
         p["inst"] = get_inst(sid)   # 三大法人(上市 T86)；上櫃/未列 None
     except Exception:

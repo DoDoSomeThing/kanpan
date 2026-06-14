@@ -35,6 +35,22 @@
 #kp-panel .kp-weak  { border-left-color: #ff7a7a; }
 #kp-panel .kp-weak b { color: #ff7a7a; }
 
+#kp-panel .kp-verdict {
+  padding: 9px 11px; border-radius: 6px; margin: 4px 0;
+  background: rgba(40, 50, 90, 0.6); border-left: 4px solid #7aa2ff;
+}
+#kp-panel .kp-verdict .vt { font-size: 16px; font-weight: 800; }
+#kp-panel .kp-verdict .vc { color: #9aa6c4; font-size: 11px; }
+#kp-panel .kp-verdict .va { color: #e6eaf5; font-size: 11.5px; margin-top: 3px; }
+#kp-panel .kp-v-bull { border-left-color: #5ff08c; }
+#kp-panel .kp-v-bull .vt { color: #5ff08c; }
+#kp-panel .kp-v-mid  { border-left-color: #f4b400; }
+#kp-panel .kp-v-mid .vt  { color: #f4b400; }
+#kp-panel .kp-v-bear { border-left-color: #ff7a7a; }
+#kp-panel .kp-v-bear .vt { color: #ff7a7a; }
+#kp-panel .kp-evo { margin: 2px 0; line-height: 1.55; }
+#kp-panel .kp-evo div { margin: 2px 0; }
+#kp-panel .kp-evo .ek { color: #8893ad; }
 #kp-panel .kp-sec { color: #7aa2ff; font-weight: 700; margin: 4px 0 2px; }
 #kp-panel .kp-row { display: flex; justify-content: space-between; gap: 8px; margin: 3px 0; }
 #kp-panel .kp-row span:first-child { color: #8893ad; }

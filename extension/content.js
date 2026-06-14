@@ -93,10 +93,29 @@
         : `<div class="kp-note">歷史統計未產生（research/score_history.py）</div>`;
       const posTag = d.pos_pct == null ? "" :
         d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
+      const v = d.verdict;
+      const vCls = v ? (v.net >= 3 ? "kp-v-bull" : v.net <= -3 ? "kp-v-bear" : "kp-v-mid") : "";
+      const verdict = v ? `
+        <div class="kp-verdict ${vCls}">
+          <div class="vt">${v.light} ${v.tone}</div>
+          <div class="vc">${v.conf}</div>
+          <div class="va">📋 ${v.action}</div>
+        </div>` : "";
+      const evoIco = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";
+      const E = d.evo || {};
+      const evoRows = ["A", "B", "C_top", "C_bot", "D", "E", "F", "G"]
+        .filter(k => E[k])
+        .map(k => `<div>${evoIco(E[k].ok)} <span class="ek">${E[k].k}</span>：${E[k].v}</div>`)
+        .join("");
+      const evo = evoRows ? `
+        <div class="kp-hr"></div>
+        <div class="kp-sec">A–G 拆解</div>
+        <div class="kp-evo">${evoRows}</div>` : "";
       p.innerHTML = `
         <span class="kp-close">✕</span>
         <div class="kp-title">kanpan 看盤　<b>${d.sid}</b> ${live}</div>
         <div class="kp-hr"></div>
+        ${verdict}
         <div class="kp-score ${scoreColor(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="kp-note"> /100</span></div>
         <div class="kp-note">趨勢40%+動能20%+量能20%+位置20%</div>
         <div class="kp-note">${d.date}　收盤/現價 ${d.close}</div>
@@ -115,6 +134,7 @@
         ${d.ccp != null ? `<div class="kp-row"><span>收盤位置</span><span>${d.ccp}% ${d.ccp_tag}</span></div>` : ""}
         ${d.round_level ? `<div class="kp-row"><span>整數關卡</span><span>${d.round_level}（${d.round_dist > 0 ? "+" : ""}${d.round_dist}% ${d.round_tag}）</span></div>` : ""}
         ${d.poc_consist != null ? `<div class="kp-row"><span>POC一致</span><span>動${d.dyn_poc}≈靜${d.poc} ${d.poc_tag}</span></div>` : ""}
+        ${evo}
         ${d.inst ? `
         <div class="kp-hr"></div>
         <div class="kp-sec">法人買賣超（${d.inst.date}）</div>
