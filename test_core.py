@@ -1,0 +1,106 @@
+#!/usr/bin/env python3
+"""
+test_core — kanpan 核心純函數回歸測試（釘住已知行為，防改門檻時靜默改壞燈號）。
+
+不靠 pytest，純 assert。跑：python test_core.py
+合成資料：明確多頭/空頭序列，驗指標與燈號方向正確，非驗精確數值。
+"""
+import sys
+import core
+
+
+def _bars(closes, vols=None):
+    """用收盤序列造 bars（high/low 取收盤±1%，open=前收，給結構/CCP 有料）。"""
+    vols = vols or [1000] * len(closes)
+    out = []
+    prev = closes[0]
+    for i, c in enumerate(closes):
+        out.append({
+            "date": f"2024-{1 + i // 28:02d}-{1 + i % 28:02d}",
+            "open": round(prev, 2),
+            "high": round(c * 1.01, 2),
+            "low": round(c * 0.99, 2),
+            "close": round(c, 2),
+            "volume": vols[i],
+        })
+        prev = c
+    return out
+
+
+passed = failed = 0
+
+
+def check(name, cond):
+    global passed, failed
+    if cond:
+        passed += 1
+        print(f"  ok  {name}")
+    else:
+        failed += 1
+        print(f"  FAIL {name}")
+
+
+# ---------- sma ----------
+s = core.sma([1, 2, 3, 4, 5], 3)
+check("sma 前 n-1 為 None", s[0] is None and s[1] is None)
+check("sma 值正確", s[2] == 2.0 and s[4] == 4.0)
+
+# ---------- rsi14 ----------
+up = list(range(1, 40))                       # 連漲 → RSI 應接近 100
+r = core.rsi14([float(x) for x in up])
+check("rsi 連漲接近100", r[-1] is not None and r[-1] > 95)
+dn = list(range(40, 1, -1))                    # 連跌 → RSI 應接近 0
+r2 = core.rsi14([float(x) for x in dn])
+check("rsi 連跌接近0", r2[-1] is not None and r2[-1] < 5)
+
+# ---------- trend_score ----------
+check("trend 多頭排列滿分", core.trend_score(100, 95, 94, 90, 85, 80) == 100)
+check("trend 空頭排列零分", core.trend_score(80, 85, 86, 90, 95, 100) == 0)
+check("trend 任一均線 None 不爆", core.trend_score(100, None, 94, 90, 85, 80) == 80)
+
+# ---------- structure ----------
+check("structure 突破=創60新高", core.structure(110, 100, 99, 98, 95, 90, 110, 80) == "突破")
+check("structure 空頭", core.structure(80, 85, 86, 90, 95, 100, 120, 60) == "空頭")
+check("structure 底部=近60低", core.structure(80, 85, 86, 90, 95, 100, 120, 78) == "底部")
+check("structure 資料不足", core.structure(100, None, None, None, None, None, None, None) == "資料不足")
+
+# ---------- vp_score 範圍 ----------
+sc = core.vp_score(100, 65, 1.2, 100, 80, 105)
+check("vp_score 0~100", 0 <= sc <= 100)
+
+# ---------- position / volume score 邊界 ----------
+check("position 貼頂打折", core.position_score(100, 50, 100) == 70.0)
+check("volume 爆量不給滿", core.volume_score(5.0) == 60.0)
+check("volume None 中性", core.volume_score(None) == 50.0)
+
+# ---------- compute_panel + verdict 方向 ----------
+import math
+bull = [50 + i * 0.4 + 4 * math.sin(i / 3.0) for i in range(160)]   # 多頭(有回檔)
+pb = core.compute_panel(core._norm(_bars(bull)))
+vb = core.verdict(pb)
+check("多頭序列 vp_score 高", pb["vp_score"] >= 70)
+check("多頭序列 net 為正", vb["net"] > 0)
+check("多頭序列燈號非紅", vb["light"] != "🔴")
+check("多頭結構偏多", pb["structure"] in ("主升段", "多頭", "突破", "起漲", "多頭修正"))
+
+# verdict 嚴格性：直線過熱(RSI~100)不該喊強多頭/偏多（防追高 guard）
+hot = [50 + i * 0.7 for i in range(160)]
+ph = core.compute_panel(core._norm(_bars(hot)))
+vh = core.verdict(ph)
+check("過熱直線不喊綠燈(防追高)", vh["light"] != "🟢")
+
+bear = [150 - i * 0.7 for i in range(160)]      # 穩定下降
+pr = core.compute_panel(core._norm(_bars(bear)))
+vr = core.verdict(pr)
+check("空頭序列 vp_score 低", pr["vp_score"] <= 45)
+check("空頭序列燈號不偏多", vr["light"] in ("🔴", "🟠", "🟡"))
+check("空頭序列 net 為負", vr["net"] < 0)
+
+# ---------- verdict 嚴格性：盤整不該喊強多頭 ----------
+flat = [100 + (i % 2) for i in range(160)]       # 橫盤
+pf = core.compute_panel(core._norm(_bars(flat)))
+vf = core.verdict(pf)
+check("橫盤不喊強多頭", vf["tone"] != "強多頭訊號")
+
+print(f"\n通過 {passed}　失敗 {failed}")
+sys.exit(1 if failed else 0)

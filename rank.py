@@ -19,10 +19,11 @@ import os
 import ssl
 import urllib.request
 
-from core import compute_panel, _find_finmind_token
+from core import compute_panel, _find_finmind_token, _recent_trading_day, _norm
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
+EXTRA = os.path.join(HERE, "cache", "extra")
 NAMES = os.path.join(HERE, "cache", "names.json")
 
 
@@ -47,17 +48,46 @@ def load_names() -> dict:
     return m
 
 
-def scan() -> list:
-    d = json.load(gzip.open(CACHE)) if CACHE.endswith(".gz") else json.load(open(CACHE))
-    out = []
-    for sid, rows in d.items():
-        if len(rows) < 130:                 # 不足算不出 ma120
+def _load_extra() -> dict:
+    """讀 cache/extra/*.json（panel 看過的檔當日即時抓的快取，fetched==今日才算新）。
+    回 {sid: bars}。讓全市場排行對「看過的檔」用新資料，免額外打 FinMind。"""
+    from datetime import date
+    today = date.today().isoformat()
+    fresh = {}
+    if not os.path.isdir(EXTRA):
+        return fresh
+    for fn in os.listdir(EXTRA):
+        if not fn.endswith(".json"):
             continue
-        bars = sorted(({
-            "date": r["date"], "open": r.get("open"),
-            "high": r.get("high", r.get("max")), "low": r.get("low", r.get("min")),
-            "close": r["close"], "volume": r.get("volume", 0) or 0,
-        } for r in rows), key=lambda x: x["date"])
+        try:
+            obj = json.loads(open(os.path.join(EXTRA, fn), encoding="utf-8").read())
+            if obj.get("fetched") == today and obj.get("bars"):
+                fresh[fn[:-5]] = obj["bars"]
+        except Exception:
+            pass
+    return fresh
+
+
+def scan():
+    """回 (rows, meta)。rows=[(sid,score,structure,rsi),...] 依分數降冪。
+    meta=cache 新鮮度資訊（最後日期/過期交易日數/套用幾檔 extra），給 main 印橫幅。"""
+    d = json.load(gzip.open(CACHE)) if CACHE.endswith(".gz") else json.load(open(CACHE))
+    extra = _load_extra()
+    out = []
+    cache_max = ""
+    extra_used = 0
+    for sid, rows in d.items():
+        if sid in extra:                     # 當日即時快取優先（新）
+            bars = extra[sid]
+            extra_used += 1
+        else:
+            if len(rows) < 130:              # 不足算不出 ma120
+                continue
+            bars = _norm(rows)
+        if bars:
+            cache_max = max(cache_max, bars[-1]["date"][:10])
+        if len(bars) < 130:
+            continue
         try:
             p = compute_panel(bars)
         except Exception:
@@ -66,7 +96,9 @@ def scan() -> list:
         if s is not None:
             out.append((sid, s, p.get("structure", ""), p.get("rsi")))
     out.sort(key=lambda x: -x[1])
-    return out
+    meta = {"cache_max": cache_max, "extra_used": extra_used,
+            "recent": _recent_trading_day(), "stale": cache_max < _recent_trading_day()}
+    return out, meta
 
 
 def main():
@@ -75,10 +107,19 @@ def main():
     ap.add_argument("--top", type=int, default=30)
     a = ap.parse_args()
 
-    rows = scan()
+    rows, meta = scan()
     names = load_names()
     vals = [s for _, s, _, _ in rows]
     print(f"\n掃描 {len(vals)} 檔（上市 cache）")
+
+    # 新鮮度橫幅：cache 過期就講清楚，別把舊排行當現況
+    if meta["stale"]:
+        print(f"[過期] cache 最後日期 {meta['cache_max']}（最近交易日 {meta['recent']}）"
+              f"｜排行多為 cache 收盤、僅供參考")
+    else:
+        print(f"cache 最後日期 {meta['cache_max']}（最新）")
+    if meta["extra_used"]:
+        print(f"   已套用 {meta['extra_used']} 檔當日即時快取（看過的檔為新）")
 
     buckets = collections.Counter((v // 10) * 10 for v in vals)
     print("\n分數分布：")
