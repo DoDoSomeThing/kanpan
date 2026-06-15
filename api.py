@@ -59,7 +59,7 @@ def ohlc_ep():
     try:
         bars = load_bars(sid, CACHE)
     except KeyError as e:
-        return jsonify(error=str(e)), 404
+        return jsonify(error=(e.args[0] if e.args else str(e))), 404
     bars = bars[-max(60, min(days, 600)):]
     candles, volumes = [], []
     for b in bars:
@@ -82,7 +82,7 @@ def panel_ep():
     try:
         bars = load_bars(sid, CACHE)
     except KeyError as e:
-        return jsonify(error=str(e)), 404
+        return jsonify(error=(e.args[0] if e.args else str(e))), 404
 
     live = False
     live_time = None
