@@ -5,6 +5,8 @@
 // 差異：Pine 用 TV 資料，算不到台股三大法人(那留在本機擴充)；
 //       也沒回測勝率(本機才有 score_stats)，信心欄改顯示 net 共振數。
 // 用法：TradingView → Pine 編輯器 → 貼上 → 儲存 → 加到圖表。
+// 2026-06-17 加：訂單塊 OB(不重繪) + 時段背景(可關)。OB 只在突破 bar 收盤確認、
+//   錨定已收盤前一根、畫上不再移動 → 不 repaint，對照市售 SMC 常見回看重繪。
 // ============================================================
 indicator("kanpan VP — 判讀燈號", overlay = true, max_labels_count = 500)
 
@@ -15,6 +17,16 @@ showLevels  = input.bool(true,  "畫 POC/壓力/支撐 軌道")
 vpLen       = input.int(60, "靜態 VP 窗(日)", minval = 20)
 vpDyn       = input.int(20, "動態 VP 窗(日)", minval = 5)
 vpBins      = input.int(40, "VP 價格分格",   minval = 10)
+
+// 訂單塊 OB（不重繪）+ 時段背景
+grpOB       = "訂單塊 OB（不重繪）"
+showOB      = input.bool(false, "畫訂單塊 OB", group = grpOB, tooltip = "突破 bar 收盤才確認，錨定已收盤的前一根，畫上去不再移動 → 不重繪。對照市售 SMC 指標常見的回看重繪。")
+obExtend    = input.int(20, "OB 框右延 bar 數", minval = 5, group = grpOB)
+maxOB       = input.int(6,  "最多保留 OB 數",   minval = 1, group = grpOB)
+grpSess     = "時段背景（24h 商品用，台股單一盤時段可關）"
+showSess    = input.bool(false, "顯示時段背景", group = grpSess)
+sess1       = input.session("0000-0900", "時段1 東京", group = grpSess)
+sess2       = input.session("1500-2330", "時段2 歐美", group = grpSess)
 
 // ---------- 均線 / RSI / 量 ----------
 ma5   = ta.sma(close, 5)
@@ -191,6 +203,29 @@ plot(showLevels ? roundLvl : na, "整數關卡", color.new(color.gray, 35), 1, s
 // 進場參考：偏多(net>=3)時把支撐畫粗綠線(失守減碼)；偏空(net<=-3)畫粗紅壓力
 plot(showLevels and net >= 3 ? val : na, "進場參考支撐", color.new(color.lime, 0), 3)
 plot(showLevels and net <= -3 ? vah : na, "反彈壓力", color.new(color.red, 0), 3)
+
+// ---------- 訂單塊 OB（不重繪）----------
+// 誠實作法：只在「突破 bar 收盤」當下確認，OB 錨定『已收盤的前一根』(bar_index[1])，
+// 框一畫上去就固定、不再移動 → 不會 repaint。
+// 對照：市售 SMC/OB 指標常等後續走勢回頭改框，截圖完美、實盤騙人。
+// 規則：前一根陰且本根收盤破其高 = 需求區(綠)；前一根陽且本根收破其低 = 供給區(紅)。
+var box[] obBoxes = array.new_box()
+f_pushOB(box b) =>
+    array.push(obBoxes, b)
+    if array.size(obBoxes) > maxOB
+        box.delete(array.shift(obBoxes))      // 超量刪最舊，畫面乾淨
+
+bullOB = showOB and close > high[1] and close[1] < open[1]
+bearOB = showOB and close < low[1]  and close[1] > open[1]
+if bullOB
+    f_pushOB(box.new(bar_index[1], high[1], bar_index[1] + obExtend, low[1], border_color = color.new(color.lime, 0), bgcolor = color.new(color.lime, 85), text = "需求OB", text_size = size.tiny, text_color = color.new(color.lime, 0)))
+if bearOB
+    f_pushOB(box.new(bar_index[1], high[1], bar_index[1] + obExtend, low[1], border_color = color.new(color.red, 0), bgcolor = color.new(color.red, 85), text = "供給OB", text_size = size.tiny, text_color = color.new(color.red, 0)))
+
+// ---------- 時段背景（純看時間，不重繪；24h 商品才有意義）----------
+inSess(simple string s) => not na(time(timeframe.period, s))
+bgcolor(showSess and inSess(sess1) ? color.new(color.blue,   93) : na, title = "時段1")
+bgcolor(showSess and inSess(sess2) ? color.new(color.purple, 93) : na, title = "時段2")
 
 // ---------- 右下面板 (A–G) ----------
 f_ico(int ok) => ok == 1 ? "✅" : ok == -1 ? "🔴" : "⚪"
