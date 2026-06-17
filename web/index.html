@@ -176,6 +176,11 @@ async function loadPanel(sid) {
     ${instRow("自營", d.inst.dealer)}
     ${ic ? `<div class="row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
+  const fr = d.freshness, ifr = d.inst_fresh;
+  const freshWarn =
+    ((fr && fr.stale) ? `<div class="err">⚠ 價格資料延遲 ${fr.lag} 日（最後 ${fr.last}）訊號僅供參考</div>` : "") +
+    ((ifr && ifr.stale) ? `<div class="note" style="color:#e8a33d">⚠ 法人延遲 ${ifr.lag} 日（T86 約16:00公布，盤中本就落後）</div>` : "");
+
   const oh = d.overhead;
   const ohRow = oh ? `<div class="row"><span>上方套牢</span><span class="${oh.near ? "weak" : ""}">${oh.near ? "⚠️逼近 " : ""}${oh.nearest}（+${oh.dist_pct}%，量占${Math.round(oh.vol_share*100)}%）</span></div>` : "";
   const bo = d.breakout;
@@ -187,6 +192,7 @@ async function loadPanel(sid) {
     <div class="kp-score ${scoreCls(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="note"> /100</span></div>
     <div class="note">趨勢40%+動能20%+量能20%+位置20%</div>
     <div class="note">${d.date}　收盤/現價 ${d.close}</div>
+    ${freshWarn}
     <div class="kp-hr"></div>
     ${hist}
     <div class="kp-hr"></div>

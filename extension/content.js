@@ -131,6 +131,12 @@
         <div class="va">📋 ${v.action}</div>
       </div>` : "";
 
+    // 功能A 資料新鮮度警示
+    const fr = d.freshness, ifr = d.inst_fresh;
+    const freshWarn =
+      ((fr && fr.stale) ? `<div class="kp-err">⚠ 價格延遲 ${fr.lag} 日（最後 ${fr.last}）僅供參考</div>` : "") +
+      ((ifr && ifr.stale) ? `<div class="kp-note" style="color:#e8a33d">⚠ 法人延遲 ${ifr.lag} 日（T86 約16:00公布）</div>` : "");
+
     // A–G 拆解（字母徽章；含 D收盤位置/E整數/F RollingPOC，故下方不再重複）
     const ico = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";
     const E = d.evo || {};
@@ -176,6 +182,7 @@
       ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
     p.innerHTML = head(d, live) + `<div class="kp-body">
+      ${freshWarn}
       ${verdict}
       ${ag}
       ${data}

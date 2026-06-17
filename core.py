@@ -163,9 +163,14 @@ OH_NEAR_PCT = 3.0    # 最近上方 HVN 距現價 < 此 % → 視為逼近套牢
 
 # ---------- 功能3 突破帶量（Breakout + Volume）參數 ----------
 BO_N_BARS   = 1        # 需連續站上整數關卡的根數
-BO_VOL_MODE = "rel"    # "rel"=相對量(vol_ratio) / "abs"=絕對張數
-BO_VOL_MULT = 1.5      # 相對量倍數門檻：量 > 20日均量 × 此倍數
+BO_VOL_MODE = "rel"    # "rel"=相對量(均量倍數) / "abs"=絕對張數
+BO_VOL_BASE = "MV5"    # 相對量基準均量："MV5"/"MV10"/"MV20"(預設MV5)
+                       #   MV20 在急漲段被灌肥會低估真突破，MV5 較貼近當下量能
+BO_VOL_MULT = 1.5      # 相對量倍數門檻：量 > 選定均量 × 此倍數
 BO_VOL_ABS  = 30000    # 絕對量門檻(張)，BO_VOL_MODE="abs" 時生效
+
+# ---------- 功能A 資料新鮮度 參數 ----------
+FRESH_LAG_TH = 1       # 最後一根 bar 落後應有交易日 ≥ 此天數 → 示警
 
 # ---------- 判讀燈號 net 權重（新增三項）----------
 W_NET_OVERHEAD = 1     # 逼近上方套牢量 → net 扣此分
@@ -268,13 +273,15 @@ def overhead_supply(bars: list, close: float, top_n: int = OH_TOP_N,
 
 def breakout_volume(closes: list, idx: int, round_level, vol_ratio, vol_lots,
                     n_bars: int = BO_N_BARS, mode: str = BO_VOL_MODE,
-                    mult: float = BO_VOL_MULT, abs_th: float = BO_VOL_ABS):
+                    mult: float = BO_VOL_MULT, abs_th: float = BO_VOL_ABS,
+                    base_label: str = BO_VOL_BASE, ref_ratio=None):
     """整數關卡突破綁量能，擋無量假突破。
     回 dict：{state, ok, vol_ok, above, v}。
       state  'none' 未觸發 / 'weak' 站上但量不足(存疑) / 'valid' 價量俱足
       ok     None(灰) / False(黃,存疑) / True(綠,有效突破) —— 對齊 evolution 燈號
       above  收盤是否連續 n_bars 站上整數關卡
       vol_ok 量能是否達門檻
+    vol_ratio 為相對量基準(預設 MV5)；ref_ratio 為 MV20 比值，附註供參考。
     無量突破(weak)不給多方加分；只有 valid 才在 verdict net +分。"""
     if not round_level:
         return {"state": "none", "ok": None, "vol_ok": False,
@@ -282,22 +289,62 @@ def breakout_volume(closes: list, idx: int, round_level, vol_ratio, vol_lots,
     # 連續 n_bars 收盤站上關卡
     above = all(closes[idx - k] > round_level
                 for k in range(n_bars) if idx - k >= 0)
+    ref = f"，vs MV20 {ref_ratio}x" if ref_ratio is not None else ""
     if mode == "abs":
         vol_ok = vol_lots is not None and vol_lots >= abs_th
         vtxt = f"量 {int(vol_lots):,}張" if vol_lots is not None else "量—"
         vthr = f"門檻 {int(abs_th):,}張"
+        ref = ""
     else:
         vol_ok = vol_ratio is not None and vol_ratio >= mult
-        vtxt = f"量 {vol_ratio}x" if vol_ratio is not None else "量—"
+        vtxt = f"量 {vol_ratio}x({base_label})" if vol_ratio is not None else "量—"
         vthr = f"門檻 {mult}x"
     if not above:
         return {"state": "none", "ok": None, "vol_ok": vol_ok, "above": False,
                 "v": f"未站上 {round_level}"}
     if vol_ok:
         return {"state": "valid", "ok": True, "vol_ok": True, "above": True,
-                "v": f"有效突破 {round_level}（{vtxt}≥{vthr}）"}
+                "v": f"有效突破 {round_level}（{vtxt}≥{vthr}{ref}）"}
     return {"state": "weak", "ok": False, "vol_ok": False, "above": True,
-            "v": f"突破未帶量,存疑（{vtxt}<{vthr}）"}
+            "v": f"突破未帶量,存疑（{vtxt}<{vthr}{ref}）"}
+
+
+# ---------- 功能A：資料新鮮度檢查 ----------
+
+def _bdays_between(d0: date, d1: date) -> int:
+    """d0→d1 之間的工作日數(粗估交易日落後，不含假日/補班)。d1<=d0 回 0。"""
+    if d1 <= d0:
+        return 0
+    n = 0
+    d = d0
+    while d < d1:
+        d = d + timedelta(days=1)
+        if d.weekday() < 5:        # 一~五
+            n += 1
+    return n
+
+
+def data_freshness(last_date: str, expected: str = None, lag_th: int = FRESH_LAG_TH):
+    """比對最後一根 bar 日期 vs 應有交易日，回新鮮度 dict。
+    回 {last, expected, lag, stale, msg}。
+      lag   落後幾個工作日(粗估)
+      stale 落後 >= lag_th
+    用於主圖價格 與 外部資料源(法人)各自比對。"""
+    if not last_date:
+        return {"last": None, "expected": expected, "lag": None,
+                "stale": True, "msg": "無資料日期"}
+    last = last_date[:10]
+    exp = (expected or _recent_trading_day())[:10]
+    try:
+        ld = date.fromisoformat(last)
+        ed = date.fromisoformat(exp)
+    except ValueError:
+        return {"last": last, "expected": exp, "lag": None,
+                "stale": False, "msg": ""}
+    lag = _bdays_between(ld, ed)
+    stale = lag >= lag_th
+    return {"last": last, "expected": exp, "lag": lag, "stale": stale,
+            "msg": (f"⚠ 資料延遲 {lag} 日，訊號僅供參考" if stale else "")}
 
 
 # ---------- 週線趨勢 + 日週共振 ----------
@@ -492,6 +539,8 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     ma60  = sma(closes, 60)[idx]
     ma120 = sma(closes, 120)[idx]
     rsi   = rsi14(closes)[idx]
+    vol5  = sma(vols, 5)[idx]
+    vol10 = sma(vols, 10)[idx]
     vol20 = sma(vols, 20)[idx]
 
     lo = max(0, idx - 59)
@@ -559,8 +608,17 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         overhead = None
 
     # 功能3 突破帶量（綁整數關卡 rl + 量能；vol 股→張）
+    # 功能B：相對量基準改可選均量(預設 MV5)，MV20 比值附註參考
     vol_lots = vols[idx] / 1000 if vols[idx] is not None else None
-    brk = breakout_volume(closes, idx, rl, vr, vol_lots)
+    base_map = {"MV5": vol5, "MV10": vol10, "MV20": vol20}
+    base_v = base_map.get(BO_VOL_BASE, vol5)
+    bo_ratio = round(vols[idx] / base_v, 2) if (base_v and vols[idx] is not None) else None
+    brk = breakout_volume(closes, idx, rl, bo_ratio, vol_lots,
+                          base_label=BO_VOL_BASE, ref_ratio=vr)
+
+    # 功能A 資料新鮮度（主圖價格；排除盤中臨時 live 棒，取最後真實日K）
+    real = [b for b in bars[:idx + 1] if b["date"] != "live"]
+    fresh = data_freshness(real[-1]["date"]) if real else None
 
     p = {
         "date": bars[idx]["date"], "close": round(c, 2),
@@ -580,6 +638,7 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
         "bias20": bias20, "bias60": bias60, "bias_tag": bias_tag,
         "overhead": overhead, "breakout": brk,
+        "freshness": fresh,
         "vp_score": score,
     }
     p["evo"] = evolution(bars, idx, p)
