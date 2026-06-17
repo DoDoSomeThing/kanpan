@@ -102,5 +102,17 @@ pf = core.compute_panel(core._norm(_bars(flat)))
 vf = core.verdict(pf)
 check("橫盤不喊強多頭", vf["tone"] != "強多頭訊號")
 
+# ---------- 壞棒防呆：超過 ±10% 漲跌幅上限的尾棒視為損壞 ----------
+clean = [{"date": f"2026-06-{10+i:02d}", "open": 24, "high": 25, "low": 23,
+          "close": 24.0, "volume": 1000} for i in range(3)]
+poison = clean + [{"date": "2026-06-13", "open": 12, "high": 12, "low": 12,
+                   "close": 12.5, "volume": 100}]    # 腰斬壞棒(踩過 2409/2330)
+bad, bd = core._bad_tail_date(poison)
+check("壞棒被偵測(變動>15%)", bad and bd == "2026-06-13")
+check("乾淨序列不誤判", not core._bad_tail_date(clean)[0])
+check("_drop_bad_tail 去掉壞尾棒", core._drop_bad_tail(poison) == clean)
+check("漲停(+10%)不誤殺", not core._bad_tail_date(
+    clean + [{"date": "2026-06-13", "close": 26.4, "volume": 1}])[0])
+
 print(f"\n通過 {passed}　失敗 {failed}")
 sys.exit(1 if failed else 0)

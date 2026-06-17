@@ -38,6 +38,36 @@ def _norm(rows: list) -> list:
     return sorted(out, key=lambda x: x["date"])
 
 
+# 台股日漲跌幅上限 ±10%；任一根 close 相對前一根變動超過此裕度 = 不可能的真實行情，
+# 多半是 FinMind 盤中未定案/殘缺棒被抓進 cache(踩過：2409 抓到 12.5、2330 抓到 227)。
+PRICE_LIMIT_TOL = 0.15     # 0.15 = 15%，比 10% 上限多留裕度，避免還權/零股價誤殺
+
+
+def _bad_tail_date(bars: list):
+    """檢查序列尾端是否有壞棒(相對前一根變動 > ±15%)。
+    回 (壞, 該壞棒日期 or None)。只看最後一根——損壞發生在最新抓取的那根。"""
+    if not bars or len(bars) < 2:
+        return False, None
+    prev, last = bars[-2], bars[-1]
+    pc, lc = prev.get("close"), last.get("close")
+    if not pc or not lc:
+        return False, None
+    if abs(lc - pc) / pc > PRICE_LIMIT_TOL:
+        return True, last.get("date")
+    return False, None
+
+
+def _drop_bad_tail(bars: list) -> list:
+    """去掉尾端壞棒(超過漲跌幅上限)，回乾淨序列。連續壞棒一併去掉。"""
+    out = list(bars)
+    while True:
+        bad, _ = _bad_tail_date(out)
+        if not bad:
+            break
+        out = out[:-1]
+    return out
+
+
 def _find_finmind_token() -> str:
     """環境變數 > stock-secrets/股票用bot.env（跨工具找，沿用 vp_brief 模式）。"""
     t = os.getenv("FINMIND_TOKEN", "")
@@ -85,11 +115,16 @@ def load_bars(sid: str, cache_path: str) -> list:
     today = date.today().isoformat()
 
     # 1) extra 當日快取(今天已抓過 FinMind，直接用，免重抓)
+    #    但先驗最後一根：若超過漲跌幅上限(壞棒)，不信此 cache，往下重抓校正。
     if extra.exists():
         try:
             obj = json.loads(extra.read_text(encoding="utf-8"))
             if obj.get("fetched") == today and obj.get("bars"):
-                return obj["bars"]
+                bad, bd = _bad_tail_date(obj["bars"])
+                if not bad:
+                    return obj["bars"]
+                # 壞棒 → 刪掉這份毒 cache，往下走重抓
+                extra.unlink(missing_ok=True)
         except Exception:
             pass
 
@@ -104,7 +139,8 @@ def load_bars(sid: str, cache_path: str) -> list:
         return main
 
     # 3) 主 cache 過期或沒有 → 抓 FinMind 補新，存 extra(當日有效)
-    bars = _fetch_finmind(sid)
+    #    抓回後先去尾端壞棒(FinMind 偶爾回殘缺/未定案棒)，避免毒 cache 再被存起來。
+    bars = _drop_bad_tail(_fetch_finmind(sid))
     if bars and (main is None or bars[-1]["date"] >= main[-1]["date"]):
         extra.parent.mkdir(parents=True, exist_ok=True)
         extra.write_text(json.dumps({"fetched": today, "bars": bars},
