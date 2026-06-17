@@ -165,6 +165,62 @@ def get_inst(sid: str, days: int = 12) -> dict | None:
     return _from_finmind(sid)        # 上櫃等 T86 未收錄 → FinMind
 
 
+# ---------- 功能2：法人背離旗標（Institutional Divergence）參數 ----------
+INST_EXCLUDE_DEALER = True   # 自營常為避險單，預設排除在背離判定外（可關）
+INST_STREAK_TH      = 1      # 連買/連賣達此天數才採計方向（1=只看當日方向）
+
+
+def consensus(inst: dict, exclude_dealer: bool = INST_EXCLUDE_DEALER,
+              streak_th: int = INST_STREAK_TH) -> dict | None:
+    """把外資/投信/自營三組數字合成『一致 vs 分歧』訊號。
+    回 {net, leader, status, light, detail} 或 None(無資料)。
+      net     參與方淨額合計(張)
+      leader  絕對量最大的主導方
+      status  「一致偏多 / 一致偏空 / 分歧」
+      light   '🟢' 一致偏多 / '🔴' 一致偏空 / '🟡' 分歧
+      detail  各方方向摘要
+    背離判定：取絕對量最大的兩方，方向相反 → 分歧。自營預設排除(避險單)。
+    說明：資料源沿用既有 get_inst（本機 T86 / FinMind），此處只做合成判定。"""
+    if not inst:
+        return None
+    names = {"foreign": "外資", "trust": "投信", "dealer": "自營"}
+    keys = ["foreign", "trust"] + ([] if exclude_dealer else ["dealer"])
+    parties = []
+    for k in keys:
+        d = inst.get(k)
+        if not d:
+            continue
+        net = d.get("net", 0)
+        streak = d.get("streak", 0)
+        # 方向：當日淨額符號；連買/連賣達門檻則以連續方向為準
+        sign = (1 if net > 0 else -1 if net < 0 else 0)
+        if abs(streak) >= streak_th and streak != 0:
+            sign = 1 if streak > 0 else -1
+        parties.append({"key": k, "name": names[k], "net": net,
+                        "streak": streak, "sign": sign})
+    active = [p for p in parties if p["sign"] != 0]
+    if not active:
+        return None
+    net_sum = sum(p["net"] for p in parties)
+    leader = max(active, key=lambda p: abs(p["net"]))
+    signs = {p["sign"] for p in active}
+    if signs == {1}:
+        status, light = "一致偏多", "🟢"
+    elif signs == {-1}:
+        status, light = "一致偏空", "🔴"
+    else:
+        status, light = "分歧", "🟡"
+    # 各方方向摘要（含連買/連賣天數）
+    def _one(p):
+        arrow = "＋" if p["sign"] > 0 else "－"
+        s = p["streak"]
+        tail = f"連買{s}" if s > 1 else f"連賣{-s}" if s < -1 else ""
+        return p["name"] + arrow + tail
+    detail = "、".join(_one(p) for p in active)
+    return {"net": net_sum, "leader": leader["name"], "status": status,
+            "light": light, "detail": detail}
+
+
 def fmt_row(name: str, d: dict) -> str:
     """一列文字：外資: +12,345 張（連買3日）"""
     net, st = d["net"], d["streak"]

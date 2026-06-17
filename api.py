@@ -22,7 +22,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from core import load_bars, compute_panel, comment, verdict
 from live import market_open, live_quote, TW_TZ
-from inst import get_inst
+from inst import get_inst, consensus
 from datetime import datetime
 
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
@@ -116,11 +116,13 @@ def panel_ep():
     p["live_time"] = live_time
     b = bucket_of(p["vp_score"])
     p["hist_bucket"] = b
-    p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     try:
         p["inst"] = get_inst(sid)   # 三大法人(上市 T86)；上櫃/未列 None
     except Exception:
         p["inst"] = None
+    # 功能2 法人共識(背離)：先算好再進 verdict，net 才計入
+    p["inst_consensus"] = consensus(p["inst"]) if p.get("inst") else None
+    p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     p["comment"] = comment(p)
     return jsonify(p)
 

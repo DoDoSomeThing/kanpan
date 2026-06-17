@@ -16,7 +16,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import load_bars, compute_panel, comment, verdict
-from inst import get_inst, fmt_row
+from inst import get_inst, fmt_row, consensus
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CACHES = [
@@ -93,17 +93,28 @@ def render(sid, p, stats):
         out.append(f"整數關卡: {p['round_level']}（距 {p['round_dist']:+}%，{p['round_tag']}）")
     if p.get("poc_consist") is not None:
         out.append(f"POC一致: 動態{p['dyn_poc']}≈靜態{p['poc']}（差{p['poc_consist']}%，{p['poc_tag']}）")
+    oh = p.get("overhead")
+    if oh:
+        flag = "⚠️逼近" if oh["near"] else "上方"
+        out.append(f"上方套牢: {flag} {oh['nearest']}（+{oh['dist_pct']}%，量占{int(oh['vol_share']*100)}%）")
+    bo = p.get("breakout")
+    if bo and bo["state"] != "none":
+        ico = "🟢" if bo["ok"] else "🟡"
+        out.append(f"突破帶量: {ico} {bo['v']}")
     inst = p.get("inst")
     if inst:
         out += ["", f"法人買賣超（{inst['date']}）:"]
         out.append("  " + fmt_row("外資", inst["foreign"]))
         out.append("  " + fmt_row("投信", inst["trust"]))
         out.append("  " + fmt_row("自營", inst["dealer"]))
+        ic = p.get("inst_consensus")
+        if ic:
+            out.append(f"  {ic['light']} 法人共識: {ic['status']}（主導{ic['leader']}，合計{ic['net']:+,}張｜{ic['detail']}）")
     evo = p.get("evo") or {}
     if evo:
         out += ["", "-" * 30, "A–G 拆解（仿 Evolution Module）:"]
         ico = lambda ok: "✅" if ok is True else "🔴" if ok is False else "⚪"
-        for key in ("A", "B", "C_top", "C_bot", "D", "E", "F", "G"):
+        for key in ("A", "B", "C_top", "C_bot", "D", "E", "F", "G", "H", "BO"):
             e = evo.get(key)
             if e:
                 out.append(f"  {ico(e['ok'])} {e['k']}: {e['v']}")
@@ -123,6 +134,7 @@ def main():
         p["inst"] = get_inst(a.sid.upper())
     except Exception:
         p["inst"] = None
+    p["inst_consensus"] = consensus(p["inst"]) if p.get("inst") else None
     print(render(a.sid.upper(), p, load_stats()))
 
 

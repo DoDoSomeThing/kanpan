@@ -166,12 +166,20 @@ async function loadPanel(sid) {
     : `<div class="note">歷史統計未產生</div>`;
   const posTag = d.pos_pct == null ? "" :
     d.pos_pct >= 70 ? "（偏高）" : d.pos_pct <= 30 ? "（偏低）" : "（中段）";
+  const ic = d.inst_consensus;
+  const icCls = ic ? (ic.status === "一致偏多" ? "buy" : ic.status === "一致偏空" ? "sell" : "") : "";
   const inst = d.inst ? `
     <div class="kp-hr"></div>
     <div class="sec">法人買賣超（${d.inst.date}）</div>
     ${instRow("外資", d.inst.foreign)}
     ${instRow("投信", d.inst.trust)}
-    ${instRow("自營", d.inst.dealer)}` : "";
+    ${instRow("自營", d.inst.dealer)}
+    ${ic ? `<div class="row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}）</span></div>` : ""}` : "";
+
+  const oh = d.overhead;
+  const ohRow = oh ? `<div class="row"><span>上方套牢</span><span class="${oh.near ? "weak" : ""}">${oh.near ? "⚠️逼近 " : ""}${oh.nearest}（+${oh.dist_pct}%，量占${Math.round(oh.vol_share*100)}%）</span></div>` : "";
+  const bo = d.breakout;
+  const boRow = (bo && bo.state !== "none") ? `<div class="row"><span>突破帶量</span><span class="${bo.ok ? "buy" : ""}">${bo.ok ? "🟢" : "🟡"} ${bo.v}</span></div>` : "";
 
   el.innerHTML = `
     <div><b style="font-size:15px">${d.sid}</b>　${live}</div>
@@ -193,6 +201,8 @@ async function loadPanel(sid) {
     ${d.vah ? `<div class="row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}
     ${d.ccp != null ? `<div class="row"><span>收盤位置</span><span>${d.ccp}% ${d.ccp_tag}</span></div>` : ""}
     ${d.round_level ? `<div class="row"><span>整數關卡</span><span>${d.round_level}（${d.round_dist > 0 ? "+" : ""}${d.round_dist}% ${d.round_tag}）</span></div>` : ""}
+    ${ohRow}
+    ${boRow}
     ${d.poc_consist != null ? `<div class="row"><span>POC一致</span><span>動${d.dyn_poc}≈靜${d.poc} ${d.poc_tag}</span></div>` : ""}
     ${d.vol_note ? `<div class="note">${d.vol_note}</div>` : ""}
     ${inst}

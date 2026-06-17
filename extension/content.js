@@ -134,8 +134,8 @@
     // A–G 拆解（字母徽章；含 D收盤位置/E整數/F RollingPOC，故下方不再重複）
     const ico = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";
     const E = d.evo || {};
-    const badge = { A: "A", B: "B", C_top: "C", C_bot: "C", D: "D", E: "E", F: "F", G: "G" };
-    const agRows = ["A", "B", "C_top", "C_bot", "D", "E", "F", "G"]
+    const badge = { A: "A", B: "B", C_top: "C", C_bot: "C", D: "D", E: "E", F: "F", G: "G", H: "H", BO: "量" };
+    const agRows = ["A", "B", "C_top", "C_bot", "D", "E", "F", "G", "H", "BO"]
       .filter(k => E[k])
       .map(k => `<div class="kp-ag"><span class="bd">${badge[k]}</span>` +
                 `<span class="lbl">${E[k].k}</span>` +
@@ -166,11 +166,14 @@
         <div class="kp-note">${b.period}</div></details>` : "";
 
     // 法人
+    const ic = d.inst_consensus;
+    const icCls = ic ? (ic.status === "一致偏多" ? "kp-buy" : ic.status === "一致偏空" ? "kp-sell" : "") : "";
     const inst = d.inst ? `
       <div class="kp-sec">法人（${d.inst.date}）</div>
       ${instRow("外資", d.inst.foreign)}
       ${instRow("投信", d.inst.trust)}
-      ${instRow("自營", d.inst.dealer)}` : "";
+      ${instRow("自營", d.inst.dealer)}
+      ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}）</span></div>` : ""}` : "";
 
     p.innerHTML = head(d, live) + `<div class="kp-body">
       ${verdict}

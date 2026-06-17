@@ -157,6 +157,21 @@ def rsi14(closes: list, n: int = 14):
 VP_BINS = 40      # 價格切 40 格
 VP_VA   = 0.70    # 價值區涵蓋 70% 成交量
 
+# ---------- 功能1 上方套牢量（Overhead Supply）參數 ----------
+OH_TOP_N    = 2      # 取現價之上量最大的前 N 個高量節點(HVN)
+OH_NEAR_PCT = 3.0    # 最近上方 HVN 距現價 < 此 % → 視為逼近套牢區(亮燈)
+
+# ---------- 功能3 突破帶量（Breakout + Volume）參數 ----------
+BO_N_BARS   = 1        # 需連續站上整數關卡的根數
+BO_VOL_MODE = "rel"    # "rel"=相對量(vol_ratio) / "abs"=絕對張數
+BO_VOL_MULT = 1.5      # 相對量倍數門檻：量 > 20日均量 × 此倍數
+BO_VOL_ABS  = 30000    # 絕對量門檻(張)，BO_VOL_MODE="abs" 時生效
+
+# ---------- 判讀燈號 net 權重（新增三項）----------
+W_NET_OVERHEAD = 1     # 逼近上方套牢量 → net 扣此分
+W_NET_BREAKOUT = 1     # 有效突破(價量俱足) → net 加此分
+W_NET_INST     = 1     # 法人一致 → net 加/扣此分(分歧為0)
+
 def vp_levels(bars: list):
     """對一段 bars 算量價分布 → (poc中軸, vah壓力, val支撐, skew量堆積比)。
     skew = POC 之上成交量占比（0.5 平衡、>0.58 偏多方堆量、<0.42 偏空方）。"""
@@ -200,6 +215,89 @@ def skew_tag(skew):
     if skew < 0.42:
         return "量偏空方堆積"
     return "量能均衡"
+
+
+# ---------- 功能1：上方套牢量（Overhead Supply Node）----------
+
+def overhead_supply(bars: list, close: float, top_n: int = OH_TOP_N,
+                    near_pct: float = OH_NEAR_PCT):
+    """對一段 bars 做量價分桶，找『現價之上』的高量節點(HVN)= 套牢賣壓。
+    回 dict：{nearest, dist_pct, vol_share, nodes, near} 或 None(無上方節點)。
+      nearest   最近一個上方 HVN 價位
+      dist_pct  該節點距現價 %
+      vol_share 該節點量能占全分布比
+      nodes     前 top_n 個上方 HVN [(price, share), ...] 由近到遠
+      near      最近 HVN 距現價 < near_pct → True(逼近套牢)
+    註：Pine/Python 皆無現成 Volume Profile 節點 API，這是對回看 bar 自行分桶的
+        近似分布(同 vp_levels)，桶數 VP_BINS 控效能。"""
+    pts = [b for b in bars if b["low"] is not None and b["high"] is not None]
+    if not pts:
+        return None
+    lo = min(b["low"] for b in pts)
+    hi = max(b["high"] for b in pts)
+    if hi <= lo:
+        return None
+    step = (hi - lo) / VP_BINS
+    vol = [0.0] * VP_BINS
+    for b in pts:
+        b_lo = max(0, min(VP_BINS - 1, int((b["low"] - lo) / step)))
+        b_hi = max(0, min(VP_BINS - 1, int((b["high"] - lo) / step)))
+        per = (b["volume"] or 0) / (b_hi - b_lo + 1)
+        for j in range(b_lo, b_hi + 1):
+            vol[j] += per
+    total = sum(vol)
+    if total <= 0:
+        return None
+    price = lambda j: lo + (j + 0.5) * step
+    # 現價之上的桶，依量由大到小取前 top_n（HVN）
+    above = [(j, vol[j]) for j in range(VP_BINS) if price(j) > close and vol[j] > 0]
+    if not above:
+        return None
+    above.sort(key=lambda x: x[1], reverse=True)
+    hvn = above[:top_n]
+    # nodes 由近到遠（價位低→高）
+    hvn_sorted = sorted(hvn, key=lambda x: price(x[0]))
+    nodes = [(round(price(j), 2), round(v / total, 3)) for j, v in hvn_sorted]
+    nearest, vol_share = nodes[0]
+    dist_pct = round((nearest - close) / close * 100, 1)
+    return {"nearest": nearest, "dist_pct": dist_pct, "vol_share": vol_share,
+            "nodes": nodes, "near": dist_pct < near_pct}
+
+
+# ---------- 功能3：突破帶量（Breakout + Volume Composite）----------
+
+def breakout_volume(closes: list, idx: int, round_level, vol_ratio, vol_lots,
+                    n_bars: int = BO_N_BARS, mode: str = BO_VOL_MODE,
+                    mult: float = BO_VOL_MULT, abs_th: float = BO_VOL_ABS):
+    """整數關卡突破綁量能，擋無量假突破。
+    回 dict：{state, ok, vol_ok, above, v}。
+      state  'none' 未觸發 / 'weak' 站上但量不足(存疑) / 'valid' 價量俱足
+      ok     None(灰) / False(黃,存疑) / True(綠,有效突破) —— 對齊 evolution 燈號
+      above  收盤是否連續 n_bars 站上整數關卡
+      vol_ok 量能是否達門檻
+    無量突破(weak)不給多方加分；只有 valid 才在 verdict net +分。"""
+    if not round_level:
+        return {"state": "none", "ok": None, "vol_ok": False,
+                "above": False, "v": "無整數關卡"}
+    # 連續 n_bars 收盤站上關卡
+    above = all(closes[idx - k] > round_level
+                for k in range(n_bars) if idx - k >= 0)
+    if mode == "abs":
+        vol_ok = vol_lots is not None and vol_lots >= abs_th
+        vtxt = f"量 {int(vol_lots):,}張" if vol_lots is not None else "量—"
+        vthr = f"門檻 {int(abs_th):,}張"
+    else:
+        vol_ok = vol_ratio is not None and vol_ratio >= mult
+        vtxt = f"量 {vol_ratio}x" if vol_ratio is not None else "量—"
+        vthr = f"門檻 {mult}x"
+    if not above:
+        return {"state": "none", "ok": None, "vol_ok": vol_ok, "above": False,
+                "v": f"未站上 {round_level}"}
+    if vol_ok:
+        return {"state": "valid", "ok": True, "vol_ok": True, "above": True,
+                "v": f"有效突破 {round_level}（{vtxt}≥{vthr}）"}
+    return {"state": "weak", "ok": False, "vol_ok": False, "above": True,
+            "v": f"突破未帶量,存疑（{vtxt}<{vthr}）"}
 
 
 # ---------- 週線趨勢 + 日週共振 ----------
@@ -454,6 +552,16 @@ def compute_panel(bars: list, i: int = -1) -> dict:
                 "正乖離偏大" if bias20 >= 15 else
                 "超跌(負乖離大)" if bias20 <= -15 else "乖離正常")
 
+    # 功能1 上方套牢量（用同一 60 日窗）
+    try:
+        overhead = overhead_supply(win, c)
+    except (ValueError, ZeroDivisionError):
+        overhead = None
+
+    # 功能3 突破帶量（綁整數關卡 rl + 量能；vol 股→張）
+    vol_lots = vols[idx] / 1000 if vols[idx] is not None else None
+    brk = breakout_volume(closes, idx, rl, vr, vol_lots)
+
     p = {
         "date": bars[idx]["date"], "close": round(c, 2),
         "open": round(bn["open"], 2) if bn.get("open") is not None else None,
@@ -471,6 +579,7 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "round_level": rl, "round_dist": rl_dist, "round_tag": rl_tag,
         "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
         "bias20": bias20, "bias60": bias60, "bias_tag": bias_tag,
+        "overhead": overhead, "breakout": brk,
         "vp_score": score,
     }
     p["evo"] = evolution(bars, idx, p)
@@ -554,6 +663,22 @@ def evolution(bars, idx, p):
         evo["G"] = {"k": "價位匯聚", "ok": spread < 1.5,
                     "v": (f"三層匯聚 POC/動態/關卡集中 {spread}%,關鍵價位" if spread < 1.5
                           else f"{near}層靠近,價位分散 {spread}%")}
+
+    # H 上方套牢量（功能1）：頭頂高量節點=突破前要消化的賣壓
+    oh = p.get("overhead")
+    if oh:
+        evo["H"] = {"k": "上方套牢", "ok": (False if oh["near"] else None),
+                    "v": (f"逼近套牢 {oh['nearest']}（+{oh['dist_pct']}%,量占"
+                          f"{int(oh['vol_share'] * 100)}%）" if oh["near"]
+                          else f"上方套牢 {oh['nearest']}（+{oh['dist_pct']}%,量占"
+                               f"{int(oh['vol_share'] * 100)}%）")}
+    elif p.get("close") is not None:
+        evo["H"] = {"k": "上方套牢", "ok": True, "v": "上方無明顯套牢量"}
+
+    # BO 突破帶量（功能3）：整數關卡突破綁量能，擋無量假突破
+    bo = p.get("breakout")
+    if bo:
+        evo["BO"] = {"k": "突破帶量", "ok": bo["ok"], "v": bo["v"]}
     return evo
 
 
@@ -605,6 +730,21 @@ def verdict(p, win20_rate=None):
     b20 = p.get("bias20")
     if b20 is not None and b20 >= 25:           # 乖離過大=追高過熱，扣分
         net -= 1
+    # 功能1：逼近上方套牢量 → 突破前有賣壓，扣分
+    oh = p.get("overhead")
+    if oh and oh.get("near"):
+        net -= W_NET_OVERHEAD
+    # 功能3：有效突破(價量俱足)才加分；無量突破(weak)不加分
+    bo = p.get("breakout")
+    if bo and bo.get("state") == "valid":
+        net += W_NET_BREAKOUT
+    # 功能2：法人一致偏多/偏空 → 加/扣；分歧為 0
+    ic = p.get("inst_consensus")
+    if ic:
+        if ic.get("status") == "一致偏多":
+            net += W_NET_INST
+        elif ic.get("status") == "一致偏空":
+            net -= W_NET_INST
 
     # 嚴格：光加分不夠，要結構/分數/不過熱/不追高/乖離沒爆 同時成立才喊偏多
     not_hot = rsi is None or rsi < 78
