@@ -20,7 +20,7 @@ from flask_cors import CORS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from core import load_bars, compute_panel, comment, verdict, data_freshness
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check
 from live import market_open, live_quote, TW_TZ
 from inst import get_inst, consensus
 from datetime import datetime
@@ -125,6 +125,8 @@ def panel_ep():
     p["inst_consensus"] = consensus(p["inst"], total_vol=tv) if p.get("inst") else None
     # 功能A：法人資料源新鮮度（盤中即時棒不影響法人，需各自比對）
     p["inst_fresh"] = data_freshness(p["inst"]["date"]) if p.get("inst") else None
+    # 功能七：各資料源 vs 基準 bar 一致性
+    p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
     p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     p["comment"] = comment(p)
     return jsonify(p)

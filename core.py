@@ -347,6 +347,21 @@ def data_freshness(last_date: str, expected: str = None, lag_th: int = FRESH_LAG
             "msg": (f"⚠ 資料延遲 {lag} 日，訊號僅供參考" if stale else "")}
 
 
+def consistency_check(ref_date: str, inst: dict = None):
+    """全欄位『同一根 bar』一致性：各資料源日期 vs 基準 bar 日期。
+    回 {ref, sources, mismatch, ok}。
+    說明：A–H/RSI/位置/乖離/breakout/參考價位 皆來自同一次 compute_panel(同一 idx)，
+    結構上必為同一根 bar，不逐欄追日期。真正跨源的只有『法人(T86)』另一資料源，
+    故此處比對 價格基準 vs 法人。任一源 ≠ 基準即點名。"""
+    ref = ref_date[:10] if ref_date else None
+    sources = [{"name": "價格", "date": ref}]      # 價格即基準
+    if inst and inst.get("date"):
+        sources.append({"name": "法人", "date": inst["date"][:10]})
+    mismatch = [s for s in sources if s["date"] != ref]
+    return {"ref": ref, "sources": sources, "mismatch": mismatch,
+            "ok": not mismatch}
+
+
 # ---------- 週線趨勢 + 日週共振 ----------
 
 def weekly_trend(bars: list):
@@ -619,6 +634,7 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     # 功能A 資料新鮮度（主圖價格；排除盤中臨時 live 棒，取最後真實日K）
     real = [b for b in bars[:idx + 1] if b["date"] != "live"]
     fresh = data_freshness(real[-1]["date"]) if real else None
+    ref_date = real[-1]["date"][:10] if real else None   # 全欄位基準 bar 日期(功能七)
 
     p = {
         "date": bars[idx]["date"], "close": round(c, 2),
@@ -638,7 +654,7 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
         "bias20": bias20, "bias60": bias60, "bias_tag": bias_tag,
         "overhead": overhead, "breakout": brk,
-        "freshness": fresh,
+        "freshness": fresh, "ref_date": ref_date,
         "vp_score": score,
     }
     p["evo"] = evolution(bars, idx, p)

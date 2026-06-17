@@ -131,11 +131,16 @@
         <div class="va">📋 ${v.action}</div>
       </div>` : "";
 
-    // 功能A 資料新鮮度警示
-    const fr = d.freshness, ifr = d.inst_fresh;
+    // 功能A 資料新鮮度 + 功能七 一致性警示
+    const fr = d.freshness, ifr = d.inst_fresh, cons = d.consistency;
+    const consWarn = (cons && !cons.ok)
+      ? cons.mismatch.map(s => `<div class="kp-err">⚠ ${s.name} 停在 ${s.date}，與基準 ${cons.ref} 不一致</div>`).join("")
+      : "";
     const freshWarn =
+      (d.ref_date ? `<div class="kp-note">資料基準 ${d.ref_date} 收盤</div>` : "") +
       ((fr && fr.stale) ? `<div class="kp-err">⚠ 價格延遲 ${fr.lag} 日（最後 ${fr.last}）僅供參考</div>` : "") +
-      ((ifr && ifr.stale) ? `<div class="kp-note" style="color:#e8a33d">⚠ 法人延遲 ${ifr.lag} 日（T86 約16:00公布）</div>` : "");
+      ((ifr && ifr.stale) ? `<div class="kp-note" style="color:#e8a33d">⚠ 法人延遲 ${ifr.lag} 日（T86 約16:00公布）</div>` : "") +
+      consWarn;
 
     // A–G 拆解（字母徽章；含 D收盤位置/E整數/F RollingPOC，故下方不再重複）
     const ico = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";

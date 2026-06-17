@@ -176,10 +176,15 @@ async function loadPanel(sid) {
     ${instRow("自營", d.inst.dealer)}
     ${ic ? `<div class="row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
-  const fr = d.freshness, ifr = d.inst_fresh;
+  const fr = d.freshness, ifr = d.inst_fresh, cons = d.consistency;
+  const consWarn = (cons && !cons.ok)
+    ? cons.mismatch.map(s => `<div class="err">⚠ ${s.name} 資料停在 ${s.date}，與基準 ${cons.ref} 不一致</div>`).join("")
+    : "";
   const freshWarn =
+    (d.ref_date ? `<div class="note">資料基準 ${d.ref_date} 收盤（全欄位同一根 bar）</div>` : "") +
     ((fr && fr.stale) ? `<div class="err">⚠ 價格資料延遲 ${fr.lag} 日（最後 ${fr.last}）訊號僅供參考</div>` : "") +
-    ((ifr && ifr.stale) ? `<div class="note" style="color:#e8a33d">⚠ 法人延遲 ${ifr.lag} 日（T86 約16:00公布，盤中本就落後）</div>` : "");
+    ((ifr && ifr.stale) ? `<div class="note" style="color:#e8a33d">⚠ 法人延遲 ${ifr.lag} 日（T86 約16:00公布，盤中本就落後）</div>` : "") +
+    consWarn;
 
   const oh = d.overhead;
   const ohRow = oh ? `<div class="row"><span>上方套牢</span><span class="${oh.near ? "weak" : ""}">${oh.near ? "⚠️逼近 " : ""}${oh.nearest}（+${oh.dist_pct}%，量占${Math.round(oh.vol_share*100)}%）</span></div>` : "";

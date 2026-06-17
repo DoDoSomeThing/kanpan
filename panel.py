@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import load_bars, compute_panel, comment, verdict, data_freshness
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check
 from inst import get_inst, fmt_row, consensus
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -58,12 +58,18 @@ def render(sid, p, stats):
     out.append(f"當前分數: {p['vp_score']} / 100")
     out.append("（趨勢40% + 動能20% + 量能20% + 位置20%）")
     out.append(f"資料日: {p['date']}　收盤 {p['close']}")
+    if p.get("ref_date"):
+        out.append(f"資料基準: {p['ref_date']} 收盤（全欄位同一根 bar）")
     fr = p.get("freshness")
     if fr and fr.get("stale"):
         out.append(f"⚠ 價格資料延遲 {fr['lag']} 日（最後 {fr['last']}，應有 {fr['expected']}）訊號僅供參考")
     ifr = p.get("inst_fresh")
     if ifr and ifr.get("stale"):
         out.append(f"⚠ 法人資料延遲 {ifr['lag']} 日（最後 {ifr['last']}；T86 約16:00公布，盤中本就落後）")
+    cons = p.get("consistency")
+    if cons and not cons.get("ok"):
+        for s in cons["mismatch"]:
+            out.append(f"⚠ {s['name']} 資料停在 {s['date']}，與基準 {cons['ref']} 不一致")
     out.append("")
     if stats:
         b = bucket_label(p["vp_score"], stats)
@@ -144,6 +150,8 @@ def main():
     p["inst_consensus"] = consensus(p["inst"], total_vol=tv) if p.get("inst") else None
     # 功能A：法人(T86)資料源各自比對新鮮度(T86 約 16:00 公布，盤中本就落後一日)
     p["inst_fresh"] = data_freshness(p["inst"]["date"]) if p.get("inst") else None
+    # 功能七：各資料源 vs 基準 bar 一致性
+    p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
     print(render(a.sid.upper(), p, load_stats()))
 
 
