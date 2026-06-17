@@ -134,7 +134,8 @@ def main():
         p["inst"] = get_inst(a.sid.upper())
     except Exception:
         p["inst"] = None
-    p["inst_consensus"] = consensus(p["inst"]) if p.get("inst") else None
+    tv = bars[-1]["volume"] / 1000 if bars and bars[-1].get("volume") else None
+    p["inst_consensus"] = consensus(p["inst"], total_vol=tv) if p.get("inst") else None
     print(render(a.sid.upper(), p, load_stats()))
 
 

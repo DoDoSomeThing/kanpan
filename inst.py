@@ -169,22 +169,38 @@ def get_inst(sid: str, days: int = 12) -> dict | None:
 INST_EXCLUDE_DEALER = True   # 自營常為避險單，預設排除在背離判定外（可關）
 INST_STREAK_TH      = 1      # 連買/連賣達此天數才採計方向（1=只看當日方向）
 
+# 雜訊門檻：單一法人當日淨額太小視為中性，不參與背離判定（擋零頭觸發假分歧）
+INST_NOISE_MODE = "abs"      # "abs"=絕對張數 / "rel"=當日總量百分比
+INST_NOISE_ABS  = 500        # 絕對量門檻(張)：|當日淨額| < 此值 → 中性
+INST_NOISE_REL  = 0.005      # 相對量門檻：|當日淨額| < 當日總量 × 此比例 → 中性
+INST_NOISE_STREAK_EXEMPT = 3 # 連買/連賣達此天數 → 豁免雜訊(持續性賣/買方仍算方向)
+
 
 def consensus(inst: dict, exclude_dealer: bool = INST_EXCLUDE_DEALER,
-              streak_th: int = INST_STREAK_TH) -> dict | None:
+              streak_th: int = INST_STREAK_TH, noise_mode: str = INST_NOISE_MODE,
+              noise_abs: float = INST_NOISE_ABS, noise_rel: float = INST_NOISE_REL,
+              streak_exempt: int = INST_NOISE_STREAK_EXEMPT,
+              total_vol: float = None) -> dict | None:
     """把外資/投信/自營三組數字合成『一致 vs 分歧』訊號。
-    回 {net, leader, status, light, detail} 或 None(無資料)。
+    回 {net, leader, status, light, detail, neutral} 或 None(無資料)。
       net     參與方淨額合計(張)
       leader  絕對量最大的主導方
       status  「一致偏多 / 一致偏空 / 分歧」
       light   '🟢' 一致偏多 / '🔴' 一致偏空 / '🟡' 分歧
-      detail  各方方向摘要
-    背離判定：取絕對量最大的兩方，方向相反 → 分歧。自營預設排除(避險單)。
-    說明：資料源沿用既有 get_inst（本機 T86 / FinMind），此處只做合成判定。"""
+      detail  各方方向摘要(含被過濾為中性者)
+      neutral 被雜訊門檻歸為中性的法人名單
+    流程：先用雜訊門檻把每方歸 多/空/中性 → 再做一致/分歧判定(中性不參與)。
+    自營預設排除(避險單)。資料源沿用既有 get_inst，此處只做合成判定。
+    total_vol：當日總成交量(張)，noise_mode='rel' 時才需要。"""
     if not inst:
         return None
     names = {"foreign": "外資", "trust": "投信", "dealer": "自營"}
     keys = ["foreign", "trust"] + ([] if exclude_dealer else ["dealer"])
+    # 雜訊門檻(張)：rel 模式用當日總量換算，無 total_vol 則退回絕對門檻
+    if noise_mode == "rel" and total_vol:
+        noise_th = total_vol * noise_rel
+    else:
+        noise_th = noise_abs
     parties = []
     for k in keys:
         d = inst.get(k)
@@ -192,13 +208,20 @@ def consensus(inst: dict, exclude_dealer: bool = INST_EXCLUDE_DEALER,
             continue
         net = d.get("net", 0)
         streak = d.get("streak", 0)
-        # 方向：當日淨額符號；連買/連賣達門檻則以連續方向為準
-        sign = (1 if net > 0 else -1 if net < 0 else 0)
-        if abs(streak) >= streak_th and streak != 0:
+        is_noise = abs(net) < noise_th               # 當日淨額太小
+        persistent = abs(streak) >= streak_exempt and streak != 0  # 連買/賣夠久 → 豁免雜訊
+        if is_noise and not persistent:              # 純零頭雜訊 → 中性
+            sign = 0
+        elif is_noise and persistent:                # 今日量小但持續同向 → 以連續方向算
             sign = 1 if streak > 0 else -1
+        else:                                        # 量足 → 當日方向(連買賣達門檻則以連續為準)
+            sign = 1 if net > 0 else -1
+            if abs(streak) >= streak_th and streak != 0:
+                sign = 1 if streak > 0 else -1
         parties.append({"key": k, "name": names[k], "net": net,
                         "streak": streak, "sign": sign})
     active = [p for p in parties if p["sign"] != 0]
+    neutral = [p for p in parties if p["sign"] == 0]
     if not active:
         return None
     net_sum = sum(p["net"] for p in parties)
@@ -210,15 +233,18 @@ def consensus(inst: dict, exclude_dealer: bool = INST_EXCLUDE_DEALER,
         status, light = "一致偏空", "🔴"
     else:
         status, light = "分歧", "🟡"
-    # 各方方向摘要（含連買/連賣天數）
+    # 各方方向摘要（含連買/連賣天數；中性者標雜訊）
     def _one(p):
         arrow = "＋" if p["sign"] > 0 else "－"
         s = p["streak"]
         tail = f"連買{s}" if s > 1 else f"連賣{-s}" if s < -1 else ""
         return p["name"] + arrow + tail
     detail = "、".join(_one(p) for p in active)
+    if neutral:
+        detail += "（" + "、".join(f"{p['name']}中性(雜訊)" for p in neutral) + "）"
     return {"net": net_sum, "leader": leader["name"], "status": status,
-            "light": light, "detail": detail}
+            "light": light, "detail": detail,
+            "neutral": [p["name"] for p in neutral]}
 
 
 def fmt_row(name: str, d: dict) -> str:

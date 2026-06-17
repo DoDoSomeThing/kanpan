@@ -174,7 +174,7 @@ async function loadPanel(sid) {
     ${instRow("外資", d.inst.foreign)}
     ${instRow("投信", d.inst.trust)}
     ${instRow("自營", d.inst.dealer)}
-    ${ic ? `<div class="row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}）</span></div>` : ""}` : "";
+    ${ic ? `<div class="row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
   const oh = d.overhead;
   const ohRow = oh ? `<div class="row"><span>上方套牢</span><span class="${oh.near ? "weak" : ""}">${oh.near ? "⚠️逼近 " : ""}${oh.nearest}（+${oh.dist_pct}%，量占${Math.round(oh.vol_share*100)}%）</span></div>` : "";

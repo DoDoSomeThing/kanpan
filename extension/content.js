@@ -173,7 +173,7 @@
       ${instRow("外資", d.inst.foreign)}
       ${instRow("投信", d.inst.trust)}
       ${instRow("自營", d.inst.dealer)}
-      ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}）</span></div>` : ""}` : "";
+      ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
     p.innerHTML = head(d, live) + `<div class="kp-body">
       ${verdict}

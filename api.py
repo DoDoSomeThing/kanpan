@@ -121,7 +121,8 @@ def panel_ep():
     except Exception:
         p["inst"] = None
     # 功能2 法人共識(背離)：先算好再進 verdict，net 才計入
-    p["inst_consensus"] = consensus(p["inst"]) if p.get("inst") else None
+    tv = bars[-1]["volume"] / 1000 if bars and bars[-1].get("volume") else None
+    p["inst_consensus"] = consensus(p["inst"], total_vol=tv) if p.get("inst") else None
     p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     p["comment"] = comment(p)
     return jsonify(p)
