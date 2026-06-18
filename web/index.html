@@ -287,7 +287,7 @@ async function loadPanel(sid) {
     <div class="row"><span>位置</span><span>60日區間 ${d.pos_pct ?? "—"}%${posTag}</span></div>
     ${d.vah ? `<div class="row"><span>參考價位</span><span>壓 ${d.vah}｜軸 ${d.poc}｜支 ${d.val}</span></div>` : ""}
     ${d.ccp != null ? `<div class="row"><span>收盤位置</span><span>${d.ccp}% ${d.ccp_tag}</span></div>` : ""}
-    ${d.round_level ? `<div class="row"><span>整數關卡</span><span>${d.round_level}（${d.round_dist > 0 ? "+" : ""}${d.round_dist}% ${d.round_tag}）</span></div>` : ""}
+    ${d.round_level ? `<div class="row"><span>整數關卡</span><span>${d.round_level}（${d.round_dist > 0 ? "+" : ""}${d.round_dist}% ${d.round_tag}）${d.round_cluster ? `<br><span class="note">叢集 ${d.round_cluster.join(" / ")}</span>` : ""}</span></div>` : ""}
     ${ohRow}
     ${boRow}
     ${d.poc_consist != null ? `<div class="row"><span>POC一致</span><span>動${d.dyn_poc}≈靜${d.poc} ${d.poc_tag}</span></div>` : ""}

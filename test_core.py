@@ -114,5 +114,33 @@ check("_drop_bad_tail 去掉壞尾棒", core._drop_bad_tail(poison) == clean)
 check("漲停(+10%)不誤殺", not core._bad_tail_date(
     clean + [{"date": "2026-06-13", "close": 26.4, "volume": 1}])[0])
 
+# ---------- 第九段 E 壓力叢集 ----------
+# 英業達案例：現價67.9，叢集 MA10 68.35 / 套牢 68.53 / MA20 69.41 → E=70
+lvl, mem = core.cluster_round_level(
+    67.9, [(68.35, "MA10"), (68.53, "套牢"), (69.41, "MA20")])
+check("叢集案例 E=70", lvl == 70)
+check("叢集成員含三項", len(mem) == 3)
+
+# 區辨案例（證明新舊不同）：現價71、MA20 73、套牢 74、step=1 → 新邏輯 75（非舊 72）
+lvl2, mem2 = core.cluster_round_level(71, [(73, "MA20"), (74, "套牢")], step=1)
+check("區辨案例 新邏輯取75(非72)", lvl2 == 75)
+check("區辨叢集上緣=74兩成員", len(mem2) == 2)
+
+# 空曠區：上方無壓力源 → 退回最近整數 round_level
+lvl3, mem3 = core.cluster_round_level(71, [])
+check("空曠區退回最近整數", lvl3 == core.round_level(71) and mem3 == [])
+# 上方源超過 max_dist → 也視為空曠
+lvl4, _ = core.cluster_round_level(71, [(95, "MA60")], max_dist_pct=12.0)
+check("超距源不成叢集→退回", lvl4 == core.round_level(71))
+
+# 帶寬切割：兩源相距 > 帶寬 → 只取最近那叢集上緣
+lvl5, mem5 = core.cluster_round_level(70, [(71, "MA10"), (80, "套牢")],
+                                      step=1, band_pct=2.0)
+check("超帶寬不併叢集(只取近端71→72)", lvl5 == 72 and len(mem5) == 1)
+
+# swing_highs：中間高點被抓出
+sh = core.swing_highs([{"high": h} for h in [10, 12, 11, 9, 15, 13]], k=1)
+check("swing_highs 抓區域高點", 12 in sh and 15 in sh)
+
 print(f"\n通過 {passed}　失敗 {failed}")
 sys.exit(1 if failed else 0)

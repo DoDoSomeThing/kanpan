@@ -103,7 +103,9 @@ def render(sid, p, stats):
     if p.get("ccp") is not None:
         out.append(f"收盤位置: {p['ccp']}%（{p['ccp_tag']}）")
     if p.get("round_level"):
-        out.append(f"整數關卡: {p['round_level']}（距 {p['round_dist']:+}%，{p['round_tag']}）")
+        cl = p.get("round_cluster")
+        cl_txt = f"｜叢集 {' / '.join(cl)}" if cl else ""
+        out.append(f"整數關卡: {p['round_level']}（距 {p['round_dist']:+}%，{p['round_tag']}）{cl_txt}")
     if p.get("poc_consist") is not None:
         out.append(f"POC一致: 動態{p['dyn_poc']}≈靜態{p['poc']}（差{p['poc_consist']}%，{p['poc_tag']}）")
     oh = p.get("overhead")

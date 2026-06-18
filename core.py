@@ -208,6 +208,18 @@ BO_VOL_ABS  = 30000    # 絕對量門檻(張)，BO_VOL_MODE="abs" 時生效
 # ---------- 功能A 資料新鮮度 參數 ----------
 FRESH_LAG_TH = 1       # 最後一根 bar 落後應有交易日 ≥ 此天數 → 示警
 
+# ---------- 第九段 E 壓力叢集（Resistance-Cluster Round Level）參數 ----------
+CL_BAND_PCT   = 2.0    # 叢集帶寬：壓力源彼此相距 < 此 % → 歸同一叢集
+CL_MAX_DIST   = 12.0   # 現價上方搜尋上限 %：超過此距離無叢集 → 退回最近整數
+CL_SWING_LB   = 60     # swing high 回看根數
+CL_SWING_K    = 2      # swing high 認定：左右各 K 根都低於它（局部高點）
+CL_SRC = {             # 納入叢集的壓力來源開關
+    "ma5": True, "ma10": True, "ma20": True, "ma60": True,
+    "overhead": True,  # H 上方套牢節點(HVN)
+    "vah": True,       # VP 價值區上緣
+    "swing": True,     # 近期 swing high
+}
+
 # ---------- 判讀燈號 net 權重（新增三項）----------
 W_NET_OVERHEAD = 1     # 逼近上方套牢量 → net 扣此分
 W_NET_BREAKOUT = 1     # 有效突破(價量俱足) → net 加此分
@@ -576,6 +588,63 @@ def round_level(price: float):
     return round(price / step) * step
 
 
+def _round_step(price: float):
+    """整數關卡級距（依價位量級）。"""
+    return 5 if price < 100 else 10 if price < 1000 else 50
+
+
+def swing_highs(bars: list, k: int = CL_SWING_K):
+    """近 bars 的 swing high：左右各 k 根 high 都不高於它的局部高點價。"""
+    hs = [b["high"] for b in bars if b.get("high") is not None]
+    out = []
+    for i in range(k, len(hs) - k):
+        if all(hs[i] >= hs[i - j] for j in range(1, k + 1)) and \
+           all(hs[i] >= hs[i + j] for j in range(1, k + 1)):
+            out.append(round(hs[i], 2))
+    return out
+
+
+def cluster_round_level(price, sources, step=None,
+                        band_pct=CL_BAND_PCT, max_dist_pct=CL_MAX_DIST):
+    """第九段：E = 站在『最近壓力叢集上緣』之上的最近整數關卡。
+
+    sources = [(price, label), ...] 壓力源（含 MA/套牢/VA上緣/swing high）。
+    流程：取現價上方且距離 < max_dist% 的壓力源 → 由近到遠，把相距 < band% 者
+    連鎖併成一個叢集 → 取『最近叢集』的上緣價 → E = 嚴格大於上緣的最近整數。
+    上方無叢集（空曠區）→ 退回 round_level（最近整數）。
+    回 (level, members)；members = [(price, label), ...] 該叢集組成（無則 []）。"""
+    if not price or price <= 0:
+        return (round_level(price), [])
+    step = step or _round_step(price)
+    # 現價上方、距離內的壓力源，由近到遠
+    cand = [(p, lab) for (p, lab) in sources
+            if p is not None and p > price and (p - price) / price * 100 <= max_dist_pct]
+    cand.sort(key=lambda x: x[0])
+    if not cand:
+        return (round_level(price), [])
+    # 從最近的源連鎖併成最近叢集（下一個與『叢集目前上緣』相距 < band% 才併入）
+    cluster = [cand[0]]
+    upper = cand[0][0]
+    for p, lab in cand[1:]:
+        if (p - upper) / upper * 100 < band_pct:
+            cluster.append((p, lab))
+            upper = p
+        else:
+            break
+    # E = 嚴格大於叢集上緣的最近整數（floor 到 step，不夠就 +step）
+    level = (int(upper / step)) * step
+    if level <= upper:
+        level += step
+    # 輸出成員：價四捨五入、去重（同價同標籤只留一個）
+    seen, members = set(), []
+    for p, lab in cluster:
+        key = (round(p, 2), lab)
+        if key not in seen:
+            seen.add(key)
+            members.append((round(p, 2), lab))
+    return (level, members)
+
+
 def compute_panel(bars: list, i: int = -1) -> dict:
     """對 bars 的第 i 根（預設最新）算完整面板 dict。
     需要至少 ~120 根才有 ma120；不足時部分欄位 None/資料不足。"""
@@ -626,12 +695,32 @@ def compute_panel(bars: list, i: int = -1) -> dict:
     ccp_tag = (None if ccp is None else
                "收高檔(買盤強收)" if ccp >= 70 else "收低檔(賣壓收尾)" if ccp <= 30 else "收中段(多空拉鋸)")
 
-    # 整數關卡（最近心理關卡 + 距離%）
-    rl = round_level(c)
-    rl_dist = round((c - rl) / rl * 100, 1) if rl else None
+    # 功能1 上方套牢量（用同一 60 日窗）— 先算，供第九段叢集當壓力源
+    try:
+        overhead = overhead_supply(win, c)
+    except (ValueError, ZeroDivisionError):
+        overhead = None
+
+    # 第九段 整數關卡升級：壓力叢集之上的整數（叢集源 = MA/套牢/VA上緣/swing high）
+    src = []
+    if CL_SRC.get("ma5"):  src.append((ma5, "MA5"))
+    if CL_SRC.get("ma10"): src.append((ma10, "MA10"))
+    if CL_SRC.get("ma20"): src.append((ma20, "MA20"))
+    if CL_SRC.get("ma60"): src.append((ma60, "MA60"))
+    if CL_SRC.get("overhead") and overhead:
+        src.append((overhead["nearest"], "套牢"))
+    if CL_SRC.get("vah") and vah:
+        src.append((vah, "VA上緣"))
+    if CL_SRC.get("swing"):
+        for sh in swing_highs(win):
+            src.append((sh, "swing"))
+    rl, rl_members = cluster_round_level(c, src)
+    rl_dist = round((rl - c) / c * 100, 1) if rl else None    # 關卡在上方→正距離
     rl_tag = (None if rl_dist is None else
               "貼近關卡(效應強)" if abs(rl_dist) < 0.7 else
               "接近關卡" if abs(rl_dist) < 1.5 else "離關卡遠")
+    # 叢集組成註記（價由近到遠）
+    rl_cluster = ([f"{lab} {p}" for p, lab in rl_members] if rl_members else None)
 
     # 動態 vs 靜態 POC 一致性（短窗 vs 60日窗）
     dyn_poc = None
@@ -651,12 +740,6 @@ def compute_panel(bars: list, i: int = -1) -> dict:
                 "乖離過大(追高險)" if bias20 >= 25 else
                 "正乖離偏大" if bias20 >= 15 else
                 "超跌(負乖離大)" if bias20 <= -15 else "乖離正常")
-
-    # 功能1 上方套牢量（用同一 60 日窗）
-    try:
-        overhead = overhead_supply(win, c)
-    except (ValueError, ZeroDivisionError):
-        overhead = None
 
     # 功能3 突破帶量（綁整數關卡 rl + 量能；vol 股→張）
     # 功能B：相對量基準改可選均量(預設 MV5)，MV20 比值附註參考
@@ -687,6 +770,7 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "high60": high60, "low60": low60,
         "ccp": ccp, "ccp_tag": ccp_tag,
         "round_level": rl, "round_dist": rl_dist, "round_tag": rl_tag,
+        "round_cluster": rl_cluster,
         "dyn_poc": dyn_poc, "poc_consist": poc_consist, "poc_tag": poc_tag,
         "bias20": bias20, "bias60": bias60, "bias_tag": bias_tag,
         "overhead": overhead, "breakout": brk,
@@ -750,10 +834,12 @@ def evolution(bars, idx, p):
         evo["D"] = {"k": "買賣方向", "ok": p["ccp"] >= 50,
                     "v": f"收盤 CCP={p['ccp']}%｜{p['ccp_tag']}"}
 
-    # E 整數共振
+    # E 整數共振（第九段：附壓力叢集組成）
     if p["round_level"]:
+        cl = p.get("round_cluster")
+        cl_txt = f"｜叢集 {' / '.join(cl)}" if cl else ""
         evo["E"] = {"k": "整數關卡", "ok": abs(p["round_dist"]) < 1.5,
-                    "v": f"{p['round_level']}（{p['round_dist']:+}%，{p['round_tag']}）"}
+                    "v": f"{p['round_level']}（{p['round_dist']:+}%，{p['round_tag']}）{cl_txt}"}
 
     # F Rolling POC：動態 vs 靜態（共識移動方向）
     if p["dyn_poc"] and poc:
