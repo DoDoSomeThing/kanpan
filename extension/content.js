@@ -2,6 +2,7 @@
 // 讀目前台股代號 → 打本機 kanpan api(8771) → 右側真分割面板。描述現況，非買賣建議。
 (() => {
   const API = "http://127.0.0.1:8771/panel";
+  const POSAPI = "http://127.0.0.1:8771/position";
   const PANEL_W = 300;
   let lastSid = null;
   let panel = null;
@@ -118,7 +119,49 @@
       <div class="pm">進場 ${pos.entry_price}${sh}｜現價 <span class="px">${pos.cur_price}</span>｜未實現 <span class="${uCls}">${pos.unreal_pct > 0 ? "+" : ""}${pos.unreal_pct}%</span></div>
       <div class="pm">生效出場：<span class="px">${pos.effective_exit}</span>（${pos.effective_by}，硬停損${pos.hard_stop} / Trail高點${pos.peak_price}−8%=${pos.trail_stop}）</div>
       <div class="pm">距觸發 <span class="px">${pos.dist_pct > 0 ? "+" : ""}${pos.dist_pct}%</span></div>
+      <div class="pa"><button class="kp-pclose" data-sid="${pos.sid}" data-px="${pos.cur_price}">平倉（現價 ${pos.cur_price}）</button></div>
     </div>`;
+  }
+
+  function posForm(sid, curPrice) {
+    return `<div class="kp-pos">
+      <div class="ph">建立持倉 ${sid}</div>
+      <div class="pf">
+        <input class="kp-pentry" type="number" step="0.01" placeholder="進場價" value="${curPrice != null ? curPrice : ""}">
+        <input class="kp-pshares" type="number" step="0.001" placeholder="張數" value="1">
+        <button class="kp-popen" data-sid="${sid}">建倉</button>
+      </div>
+    </div>`;
+  }
+
+  async function posPost(body) {
+    const r = await fetch(POSAPI, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return r.json();
+  }
+
+  function bindPos(p, sid) {
+    const ob = p.querySelector(".kp-popen");
+    if (ob) ob.onclick = async () => {
+      const entry = parseFloat(p.querySelector(".kp-pentry").value);
+      const shares = parseFloat(p.querySelector(".kp-pshares").value);
+      if (!(entry > 0) || !(shares > 0)) { alert("進場價/張數要 > 0"); return; }
+      ob.disabled = true; ob.textContent = "建倉中…";
+      const res = await posPost({ action: "open", sid: ob.dataset.sid, entry_price: entry, shares });
+      if (res.error) { alert(res.error); ob.disabled = false; ob.textContent = "建倉"; return; }
+      fetchAndRender(sid);
+    };
+    const cb = p.querySelector(".kp-pclose");
+    if (cb) cb.onclick = async () => {
+      if (!confirm(`平倉 ${cb.dataset.sid} @ ${cb.dataset.px}？`)) return;
+      cb.disabled = true; cb.textContent = "平倉中…";
+      const res = await posPost({ action: "close", sid: cb.dataset.sid, exit_price: parseFloat(cb.dataset.px) });
+      if (res.error) { alert(res.error); cb.disabled = false; return; }
+      fetchAndRender(sid);
+    };
   }
 
   function render(d) {
@@ -200,7 +243,7 @@
       ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
     p.innerHTML = head(d, live) + `<div class="kp-body">
-      ${posCard(d.position)}
+      ${d.position ? posCard(d.position) : posForm(d.sid, d.close)}
       ${freshWarn}
       ${verdict}
       ${ag}
@@ -212,6 +255,7 @@
       <div class="kp-comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>
     </div>`;
     bindClose(p);
+    bindPos(p, d.sid);
   }
 
   function bindClose(p) {

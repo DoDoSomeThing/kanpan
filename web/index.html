@@ -65,6 +65,15 @@
   .pos-h { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
   .pos-m { color: #aeb8d4; font-size: 12px; margin: 2px 0; }
   .pos-x { color: #e6eaf5; }
+  .pos-form { display: flex; gap: 6px; margin: 6px 0 4px; }
+  .pos-form input { width: 50%; padding: 5px 8px; border-radius: 5px;
+    border: 1px solid #3a4a7a; background: #141a33; color: #e6eaf5; font-size: 13px; }
+  .pos-form button, .pos-act button { padding: 5px 12px; border-radius: 5px; border: 0;
+    background: #2a3a9a; color: #fff; font-weight: 700; cursor: pointer; font-size: 13px; }
+  .pos-form button:hover, .pos-act button:hover { background: #3a4abb; }
+  .pos-act { margin-top: 6px; }
+  .pos-act button { background: #7a3a3a; width: 100%; }
+  .pos-act button:hover { background: #9a4a4a; }
 </style>
 </head>
 <body>
@@ -87,6 +96,7 @@
 <script>
 const API  = "http://127.0.0.1:8771/panel";
 const OHLC = "http://127.0.0.1:8771/ohlc";
+const POSAPI = "http://127.0.0.1:8771/position";
 
 // ---- 自畫 K 線（lightweight-charts + 本機 /ohlc，不靠 TradingView，無彈窗）----
 let chart, candleS, volS, ma20S, ma60S;
@@ -159,7 +169,50 @@ function posCard(pos) {
     <div class="pos-m">進場 ${pos.entry_price}${sh}｜現價 <span class="pos-x">${pos.cur_price}</span>｜未實現 <span class="${uCls}">${pos.unreal_pct > 0 ? "+" : ""}${pos.unreal_pct}%</span></div>
     <div class="pos-m">生效出場：<span class="pos-x">${pos.effective_exit}</span>（${pos.effective_by}，硬停損${pos.hard_stop} / Trail高點${pos.peak_price}−8%=${pos.trail_stop}）</div>
     <div class="pos-m">距觸發 <span class="pos-x">${pos.dist_pct > 0 ? "+" : ""}${pos.dist_pct}%</span></div>
+    <div class="pos-act"><button id="pos-close" data-sid="${pos.sid}" data-px="${pos.cur_price}">平倉（現價 ${pos.cur_price}）</button></div>
   </div>`;
+}
+
+function posForm(sid, curPrice) {
+  return `<div class="pos">
+    <div class="pos-h">建立持倉 ${sid}</div>
+    <div class="pos-form">
+      <input id="pos-entry" type="number" step="0.01" placeholder="進場價" value="${curPrice ?? ""}">
+      <input id="pos-shares" type="number" step="0.001" placeholder="張數" value="1">
+      <button id="pos-open" data-sid="${sid}">建倉</button>
+    </div>
+    <div class="note">建倉後此卡變風控卡，自動盯硬停損／Trail</div>
+  </div>`;
+}
+
+async function posPost(body) {
+  const r = await fetch(POSAPI, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+function bindPos(sid) {
+  const ob = document.getElementById("pos-open");
+  if (ob) ob.onclick = async () => {
+    const entry = parseFloat(document.getElementById("pos-entry").value);
+    const shares = parseFloat(document.getElementById("pos-shares").value);
+    if (!(entry > 0) || !(shares > 0)) { alert("進場價/張數要 > 0"); return; }
+    ob.disabled = true; ob.textContent = "建倉中…";
+    const res = await posPost({ action: "open", sid: ob.dataset.sid, entry_price: entry, shares });
+    if (res.error) { alert(res.error); ob.disabled = false; ob.textContent = "建倉"; return; }
+    loadPanel(sid);
+  };
+  const cb = document.getElementById("pos-close");
+  if (cb) cb.onclick = async () => {
+    if (!confirm(`平倉 ${cb.dataset.sid} @ ${cb.dataset.px}？`)) return;
+    cb.disabled = true; cb.textContent = "平倉中…";
+    const res = await posPost({ action: "close", sid: cb.dataset.sid, exit_price: parseFloat(cb.dataset.px) });
+    if (res.error) { alert(res.error); cb.disabled = false; return; }
+    loadPanel(sid);
+  };
 }
 
 async function loadPanel(sid) {
@@ -214,7 +267,7 @@ async function loadPanel(sid) {
   const boRow = (bo && bo.state !== "none") ? `<div class="row"><span>突破帶量</span><span class="${bo.ok ? "buy" : ""}">${bo.ok ? "🟢" : "🟡"} ${bo.v}</span></div>` : "";
 
   el.innerHTML = `
-    ${posCard(d.position)}
+    ${d.position ? posCard(d.position) : posForm(d.sid, d.close)}
     <div><b style="font-size:15px">${d.sid}</b>　${live}</div>
     <div class="kp-hr"></div>
     <div class="kp-score ${scoreCls(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="note"> /100</span></div>
@@ -243,6 +296,7 @@ async function loadPanel(sid) {
     <div class="kp-hr"></div>
     <div class="sec">評語</div>
     <div class="comment">${(d.comment || "").replace(/\n/g, "<br>")}</div>`;
+  bindPos(sid);
 }
 
 function go() {
