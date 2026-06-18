@@ -182,6 +182,7 @@
     const vCls = v ? (v.net >= 3 ? "kp-v-bull" : v.net <= -3 ? "kp-v-bear" : "kp-v-mid") : "";
     const verdict = v ? `
       <div class="kp-verdict ${vCls}">
+        <div class="vf">${v.frame || "現況研判·非預測"}</div>
         <div class="vt">${v.light} ${v.tone}</div>
         <div class="vc">${v.conf}　|　分數 ${d.vp_score}/100　${d.structure}</div>
         <div class="va">📋 ${v.action}</div>

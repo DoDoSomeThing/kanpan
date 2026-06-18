@@ -53,7 +53,8 @@ def render(sid, p, stats):
     # 判讀燈號（綁回測勝率）
     b0 = bucket_label(p["vp_score"], stats) if stats else None
     v = verdict(p, b0["win20"] if (b0 and b0["n"] > 0) else None)
-    out += [f"{v['light']} {v['tone']}　{v['conf']}",
+    out += [f"〔{v.get('frame', '現況研判·非預測')}〕",
+            f"{v['light']} {v['tone']}　{v['conf']}",
             f"操作研判: {v['action']}", ""]
     out.append(f"當前分數: {p['vp_score']} / 100")
     out.append("（趨勢40% + 動能20% + 量能20% + 位置20%）")

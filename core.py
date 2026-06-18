@@ -877,8 +877,11 @@ def verdict(p, win20_rate=None):
     else:
         light, tone, sig = "🟡", "方向待定", "條件不齊，等確認"
 
-    conf = (f"此分數區間過去20日勝率 {win20_rate}%" if win20_rate is not None
-            else "（回測勝率未產生）")
+    # L1 誠實框：分桶勝率已驗證無 alpha → 標為歷史描述、非預測、非買訊
+    if win20_rate is not None:
+        conf = f"歷史描述·非預測｜此分數桶20日勝率 {win20_rate}%（<50%，非買訊）"
+    else:
+        conf = "無回測數據（不補勝率）"
     action = sig
     if strong and p.get("val"):
         action = f"{sig}；參考支撐 {p['val']}（失守減碼）"
@@ -887,7 +890,7 @@ def verdict(p, win20_rate=None):
     elif net <= -3 and p.get("vah"):
         action = f"{sig}；反彈壓力 {p['vah']}"
     return {"light": light, "tone": tone, "sig": sig, "net": net,
-            "conf": conf, "action": action}
+            "conf": conf, "action": action, "frame": "現況研判·非預測（分數無方向 alpha）"}
 
 
 # ---------- 評語（規則式，非 LLM、非建議）----------

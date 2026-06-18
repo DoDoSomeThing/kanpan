@@ -55,6 +55,8 @@
   border: 1px solid #243358;
   background: linear-gradient(135deg, rgba(40,52,92,.5), rgba(20,26,52,.35));
 }
+#kp-panel .kp-verdict .vf { color: #7e8aa8; font-size: .72em; letter-spacing: .3px;
+  text-transform: none; margin-bottom: 3px; }
 #kp-panel .kp-verdict .vt { font-size: 1.45em; font-weight: 800; letter-spacing: .5px; }
 #kp-panel .kp-verdict .vc { color: #97a3c2; font-size: .85em; margin-top: 3px; }
 #kp-panel .kp-verdict .va {
