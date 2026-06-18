@@ -18,7 +18,7 @@ import json
 import os
 import ssl
 import urllib.request
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 # ---------- 資料載入 ----------
@@ -98,12 +98,28 @@ def _fetch_finmind(sid: str) -> list:
     return _norm(r.get("data", []))
 
 
+def _prev_trading_day(d: date) -> date:
+    """往前推一個交易日(跳過週末)。"""
+    d = d - timedelta(days=1)
+    while d.weekday() >= 5:
+        d = d - timedelta(days=1)
+    return d
+
+
+# 台股收盤 13:30；留緩衝到 14:00 等當日日K定案。此時刻前「應有的最新日K」仍是前一交易日。
+MARKET_CLOSE_HOUR = 14
+
+
 def _recent_trading_day() -> str:
-    """最近應有資料的交易日(週末退回上週五)。盤中今日棒未出也用，差一天會被 FinMind 校正。"""
-    d = date.today()
-    wd = d.weekday()           # 0=一 .. 6=日
-    if wd >= 5:                # 週六/日 → 上週五
-        d = d - timedelta(days=wd - 4)
+    """最近『應有日K』的交易日。
+    週末退回上週五；平日但今日尚未收盤定案(現在 < 14:00)→ 退回前一交易日，
+    避免收盤後~隔天開盤前這段把『最新=昨收』誤報成延遲。"""
+    now = datetime.now()
+    d = now.date()
+    if d.weekday() >= 5:                      # 週六/日 → 上週五
+        d = d - timedelta(days=d.weekday() - 4)
+    elif now.hour < MARKET_CLOSE_HOUR:        # 平日但今日K未定案 → 前一交易日
+        d = _prev_trading_day(d)
     return d.isoformat()
 
 
