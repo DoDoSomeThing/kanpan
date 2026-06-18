@@ -23,6 +23,8 @@ sys.path.insert(0, HERE)
 from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check
 from live import market_open, live_quote, TW_TZ
 from inst import get_inst, consensus
+from position import (load_positions, position_risk, open_position,
+                      close_position)
 from datetime import datetime
 
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
@@ -129,7 +131,79 @@ def panel_ep():
     p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
     p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     p["comment"] = comment(p)
+    # L3 持倉風控（V2 Phase 1）：該檔有持倉才回，順手累積 peak
+    try:
+        cur = bars[-1]["close"]
+        hi = bars[-1].get("high")
+        p["position"] = position_risk(sid, cur, today_high=hi)
+    except Exception:
+        p["position"] = None
     return jsonify(p)
+
+
+@app.route("/position", methods=["GET", "POST"])
+def position_ep():
+    """GET ?sid=2356 → 該檔風控；GET 無 sid → 列所有持倉風控。
+    POST {action:open|close, ...} → 開/平倉。"""
+    if request.method == "GET":
+        sid = (request.args.get("sid") or "").strip().upper()
+        if sid:
+            if not re.fullmatch(r"[0-9]{4,6}[A-Z]?", sid):
+                return jsonify(error="sid 格式錯"), 400
+            cur, hi = _cur_price_high(sid)
+            if cur is None:
+                return jsonify(error="無 K 線 cache 或查無此檔"), 404
+            r = position_risk(sid, cur, today_high=hi)
+            if not r:
+                return jsonify(sid=sid, position=None)
+            return jsonify(sid=sid, position=r)
+        # 無 sid → 列全部
+        d = load_positions()
+        out = []
+        for s in list(d["open"].keys()):
+            cur, hi = _cur_price_high(s)
+            if cur is None:
+                continue
+            out.append(position_risk(s, cur, today_high=hi))
+        return jsonify(open=out, closed=d["closed"])
+
+    # POST：開 / 平倉
+    body = request.get_json(silent=True) or {}
+    action = (body.get("action") or "").lower()
+    sid = (body.get("sid") or "").strip().upper()
+    if not re.fullmatch(r"[0-9]{4,6}[A-Z]?", sid or ""):
+        return jsonify(error="sid 格式錯"), 400
+    try:
+        if action == "open":
+            pos = open_position(sid, body["entry_price"], body["shares"],
+                                body.get("entry_date"), body.get("note", ""))
+            return jsonify(ok=True, sid=sid, position=pos)
+        elif action == "close":
+            rec = close_position(sid, body["exit_price"],
+                                 body.get("exit_date"),
+                                 body.get("exit_reason", "manual"))
+            return jsonify(ok=True, sid=sid, closed=rec)
+        return jsonify(error="action 需為 open / close"), 400
+    except (KeyError, ValueError) as e:
+        return jsonify(error=str(e)), 400
+
+
+def _cur_price_high(sid):
+    """取某檔現價與今日 high：盤中用 MIS 即時，否則 cache 最新收盤。"""
+    if not os.path.exists(CACHE):
+        return None, None
+    try:
+        bars = load_bars(sid, CACHE)
+    except KeyError:
+        return None, None
+    last = bars[-1]
+    cur, hi = last["close"], last.get("high")
+    if market_open():
+        q = live_quote(sid)
+        if q and q.get("price"):
+            cur = q["price"]
+            hi = max(q.get("high") or cur, hi or cur)
+    return cur, hi
 
 
 if __name__ == "__main__":

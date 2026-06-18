@@ -108,6 +108,19 @@
       </div>`;
   }
 
+  function posCard(pos) {
+    if (!pos) return "";
+    const cls = pos.light === "🟢" ? "g" : pos.light === "🟡" ? "y" : "r";
+    const sh = pos.shares != null ? ` × ${pos.shares}張` : "";
+    const uCls = pos.unreal_pct >= 0 ? "kp-buy" : "kp-sell";
+    return `<div class="kp-pos ${cls}">
+      <div class="ph">持倉 ${pos.sid}　${pos.light} ${pos.state}</div>
+      <div class="pm">進場 ${pos.entry_price}${sh}｜現價 <span class="px">${pos.cur_price}</span>｜未實現 <span class="${uCls}">${pos.unreal_pct > 0 ? "+" : ""}${pos.unreal_pct}%</span></div>
+      <div class="pm">生效出場：<span class="px">${pos.effective_exit}</span>（${pos.effective_by}，硬停損${pos.hard_stop} / Trail高點${pos.peak_price}−8%=${pos.trail_stop}）</div>
+      <div class="pm">距觸發 <span class="px">${pos.dist_pct > 0 ? "+" : ""}${pos.dist_pct}%</span></div>
+    </div>`;
+  }
+
   function render(d) {
     const p = ensurePanel();
     if (d.error) {
@@ -187,6 +200,7 @@
       ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
     p.innerHTML = head(d, live) + `<div class="kp-body">
+      ${posCard(d.position)}
       ${freshWarn}
       ${verdict}
       ${ag}

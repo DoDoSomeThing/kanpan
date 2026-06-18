@@ -56,6 +56,15 @@
   .static { color: #8893ad; font-size: 11px; }
   .err { color: #ff7a7a; }
   .foot { color: #6b7596; font-size: 11px; font-style: italic; margin-top: 8px; }
+  /* L3 持倉風控卡（最上方，風控優先） */
+  .pos { border-radius: 7px; padding: 9px 11px; margin-bottom: 10px;
+         background: rgba(40,50,90,.5); border-left: 4px solid #7aa2ff; }
+  .pos.g { border-left-color: #5ff08c; }
+  .pos.y { border-left-color: #f4b400; }
+  .pos.r { border-left-color: #ff5a5a; background: rgba(120,40,40,.4); }
+  .pos-h { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .pos-m { color: #aeb8d4; font-size: 12px; margin: 2px 0; }
+  .pos-x { color: #e6eaf5; }
 </style>
 </head>
 <body>
@@ -140,6 +149,19 @@ function instRow(name, x) {
   return `<div class="row"><span>${name}</span><span class="${cls}">${t}</span></div>`;
 }
 
+function posCard(pos) {
+  if (!pos) return "";
+  const cls = pos.light === "🟢" ? "g" : pos.light === "🟡" ? "y" : "r";
+  const sh = pos.shares != null ? ` × ${pos.shares}張` : "";
+  const uCls = pos.unreal_pct >= 0 ? "buy" : "sell";
+  return `<div class="pos ${cls}">
+    <div class="pos-h">持倉 ${pos.sid}　${pos.light} ${pos.state}</div>
+    <div class="pos-m">進場 ${pos.entry_price}${sh}｜現價 <span class="pos-x">${pos.cur_price}</span>｜未實現 <span class="${uCls}">${pos.unreal_pct > 0 ? "+" : ""}${pos.unreal_pct}%</span></div>
+    <div class="pos-m">生效出場：<span class="pos-x">${pos.effective_exit}</span>（${pos.effective_by}，硬停損${pos.hard_stop} / Trail高點${pos.peak_price}−8%=${pos.trail_stop}）</div>
+    <div class="pos-m">距觸發 <span class="pos-x">${pos.dist_pct > 0 ? "+" : ""}${pos.dist_pct}%</span></div>
+  </div>`;
+}
+
 async function loadPanel(sid) {
   const el = document.getElementById("panel");
   el.innerHTML = `<div class="note">分析中…</div>`;
@@ -192,6 +214,7 @@ async function loadPanel(sid) {
   const boRow = (bo && bo.state !== "none") ? `<div class="row"><span>突破帶量</span><span class="${bo.ok ? "buy" : ""}">${bo.ok ? "🟢" : "🟡"} ${bo.v}</span></div>` : "";
 
   el.innerHTML = `
+    ${posCard(d.position)}
     <div><b style="font-size:15px">${d.sid}</b>　${live}</div>
     <div class="kp-hr"></div>
     <div class="kp-score ${scoreCls(d.vp_score)}">當前分數　<b>${d.vp_score}</b><span class="note"> /100</span></div>
