@@ -35,6 +35,10 @@ DEEP_CANDIDATES = [
 # 前後分段切點：2021-06~2024-12 約中點。觸發日 < 此 → 訓練，否則 → 驗證。
 SPLIT_DATE = "2023-03-01"
 FWD = 20            # 未來 N 日報酬
+# 可投資門檻：觸發日 close < 此 → 不納入回測。
+# 目的＝對齊使用者實際會買的範圍(剔雞蛋水餃/將下市股)，讓 mdd 反映真會遇到的最壞，
+# 非「藏 -100%」。**一次定死、只用客觀價格門檻**，不得為了調勝率再加條件(=資料探勘)。
+MIN_PRICE = 10.0
 
 
 def find_deep(arg):
@@ -73,12 +77,15 @@ def main():
 
         for i in range(20, len(bars) - FWD, a.step):
             c = closes[i]
-            if not c or c <= 0 or i + FWD >= len(closes):
-                continue
+            if not c or c < MIN_PRICE or i + FWD >= len(closes):
+                continue   # 低價股(<MIN_PRICE)剔除：非使用者投資範圍，避免歸零雜訊汙染 mdd
             fired = fires(bars, closes, vols, m20, v20, i)
             if not fired:
                 continue
-            fwd = (closes[i + FWD] / c - 1) * 100
+            fc = closes[i + FWD]
+            if not fc or fc <= 0:
+                continue   # 未來價缺值(deep 資料破洞填 0)→ 跳過，避免假 -100% 汙染 mdd
+            fwd = (fc / c - 1) * 100
             seg = "train" if bars[i]["date"][:10] < SPLIT_DATE else "val"
             for name in fired:
                 rec[name][seg].append(fwd)
@@ -98,7 +105,7 @@ def main():
         }
 
     out = {"period": "2021-06~2024-12 (kline_deep)", "split": SPLIT_DATE,
-           "fwd": FWD, "templates": {}}
+           "fwd": FWD, "min_price": MIN_PRICE, "templates": {}}
     print(f"{'模板':<10}{'訓練n':>7}{'訓練勝':>7}{'驗證n':>7}{'驗證勝':>7}{'平均20':>8}{'最差20':>8}")
     for name in TEMPLATES:
         tr, va = stat(rec[name]["train"]), stat(rec[name]["val"])
