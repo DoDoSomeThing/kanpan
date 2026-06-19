@@ -661,6 +661,28 @@ def cluster_round_level(price, sources, step=None,
     return (level, members)
 
 
+def state_layer(p: dict) -> dict:
+    """L2.0 L1 狀態層：純把現有欄位重排成『一眼看現況』。
+    不算新指標、不給方向/買賣意見(spec Phase 2)。籌碼需 inst_consensus，
+    故此函式須在 inst_consensus 併入 p 後才呼叫(api/panel 各一次)。"""
+    c, ma5, ma20 = p.get("close"), p.get("ma5"), p.get("ma20")
+    vr = p.get("vol_ratio")
+    ic = p.get("inst_consensus")
+    checklist = [
+        {"k": "站上MA5",    "ok": c is not None and ma5 is not None and c > ma5},
+        {"k": "站上MA20",   "ok": c is not None and ma20 is not None and c > ma20},
+        {"k": "放量(>1.2x)", "ok": vr is not None and vr > 1.2},
+        {"k": "POC穩定",    "ok": p.get("poc_tag") == "共識穩定"},
+    ]
+    return {
+        "trend": p.get("structure") or "—",
+        "chips": (ic.get("status") if ic else None) or "—",
+        "chips_light": (ic.get("light") if ic else ""),
+        "momentum": p.get("momentum") or "—",
+        "checklist": checklist,
+    }
+
+
 def compute_panel(bars: list, i: int = -1) -> dict:
     """對 bars 的第 i 根（預設最新）算完整面板 dict。
     需要至少 ~120 根才有 ma120；不足時部分欄位 None/資料不足。"""

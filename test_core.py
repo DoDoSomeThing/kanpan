@@ -142,5 +142,20 @@ check("超帶寬不併叢集(只取近端71→72)", lvl5 == 72 and len(mem5) == 
 sh = core.swing_highs([{"high": h} for h in [10, 12, 11, 9, 15, 13]], k=1)
 check("swing_highs 抓區域高點", 12 in sh and 15 in sh)
 
+# ---------- L1 狀態層：純重排，checklist 真值 ----------
+sl = core.state_layer({
+    "close": 100, "ma5": 98, "ma20": 102, "vol_ratio": 1.5,
+    "poc_tag": "共識穩定", "structure": "盤整", "momentum": "普通",
+    "inst_consensus": {"status": "一致偏多", "light": "🟢"},
+})
+ckd = {x["k"]: x["ok"] for x in sl["checklist"]}
+check("狀態層 趨勢取 structure", sl["trend"] == "盤整")
+check("狀態層 籌碼取 inst_consensus", sl["chips"] == "一致偏多")
+check("checklist 站上MA5(100>98)", ckd["站上MA5"] is True)
+check("checklist 未站上MA20(100<102)", ckd["站上MA20"] is False)
+check("checklist 放量(1.5>1.2)", ckd["放量(>1.2x)"] is True)
+check("checklist POC穩定", ckd["POC穩定"] is True)
+check("狀態層 無法人時籌碼=—", core.state_layer({"inst_consensus": None})["chips"] == "—")
+
 print(f"\n通過 {passed}　失敗 {failed}")
 sys.exit(1 if failed else 0)

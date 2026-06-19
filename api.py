@@ -20,7 +20,7 @@ from flask_cors import CORS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer
 from live import market_open, live_quote, TW_TZ
 from inst import get_inst, consensus
 from position import (load_positions, position_risk, open_position,
@@ -130,6 +130,7 @@ def panel_ep():
     # 功能七：各資料源 vs 基準 bar 一致性
     p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
     p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
+    p["state_layer"] = state_layer(p)   # L1 狀態層(需 inst_consensus 已併入)
     p["comment"] = comment(p)
     # L3 持倉風控（V2 Phase 1）：該檔有持倉才回，順手累積 peak
     try:

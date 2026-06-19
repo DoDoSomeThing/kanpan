@@ -188,6 +188,16 @@
         <div class="va">📋 ${v.action}</div>
       </div>` : "";
 
+    // L1 狀態層（純重排現有資料：趨勢/籌碼/動能 + checklist）
+    const sl = d.state_layer;
+    const ck = sl ? sl.checklist.map(x =>
+      `<span class="kp-ck ${x.ok ? "on" : "off"}">${x.ok ? "☑" : "☒"} ${x.k}</span>`).join("") : "";
+    const stateCard = sl ? `
+      <div class="kp-state">
+        <div class="kp-srow"><span>趨勢 <b>${sl.trend}</b></span><span>籌碼 <b>${sl.chips_light}${sl.chips}</b></span><span>動能 <b>${sl.momentum}</b></span></div>
+        <div class="kp-cks">${ck}</div>
+      </div>` : "";
+
     // 功能A 資料新鮮度 + 功能七 一致性警示
     const fr = d.freshness, ifr = d.inst_fresh, cons = d.consistency;
     const consWarn = (cons && !cons.ok)
@@ -247,6 +257,7 @@
       ${d.position ? posCard(d.position) : posForm(d.sid, d.close)}
       ${freshWarn}
       ${verdict}
+      ${stateCard}
       ${ag}
       ${data}
       ${inst}

@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer
 from inst import get_inst, fmt_row, consensus
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -56,6 +56,11 @@ def render(sid, p, stats):
     out += [f"〔{v.get('frame', '現況研判·非預測')}〕",
             f"{v['light']} {v['tone']}　{v['conf']}",
             f"操作研判: {v['action']}", ""]
+    # L1 狀態層（純重排現有資料，一眼看現況）
+    sl = state_layer(p)
+    ck = "  ".join(f"{'☑' if x['ok'] else '☒'} {x['k']}" for x in sl["checklist"])
+    out += [f"狀態: 趨勢 {sl['trend']}｜籌碼 {sl['chips_light']}{sl['chips']}｜動能 {sl['momentum']}",
+            f"      {ck}", ""]
     out.append(f"當前分數: {p['vp_score']} / 100")
     out.append("（趨勢40% + 動能20% + 量能20% + 位置20%）")
     out.append(f"資料日: {p['date']}　收盤 {p['close']}")

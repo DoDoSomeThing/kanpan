@@ -71,6 +71,23 @@
 #kp-panel .kp-v-bear .vt { color: #ff7a7a; }
 #kp-panel .kp-v-bear { background: linear-gradient(135deg, rgba(110,47,55,.34), rgba(40,20,24,.25)); }
 
+/* L1 狀態層卡：趨勢/籌碼/動能 + checklist */
+#kp-panel .kp-state {
+  border-radius: 9px; padding: 9px 12px; margin-bottom: 12px;
+  border: 1px solid #1e2a4d; background: rgba(26,34,60,.4);
+}
+#kp-panel .kp-state .kp-srow {
+  display: flex; justify-content: space-between; gap: 8px;
+  color: #97a3c2; font-size: .88em;
+}
+#kp-panel .kp-state .kp-srow b { color: #e6eaf5; font-weight: 700; }
+#kp-panel .kp-state .kp-cks {
+  display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 8px;
+  font-size: .82em;
+}
+#kp-panel .kp-ck.on  { color: #4fe08a; }
+#kp-panel .kp-ck.off { color: #6b7799; }
+
 /* 分段標題（──── 文字 ────） */
 #kp-panel .kp-sec {
   display: flex; align-items: center; gap: 9px;
