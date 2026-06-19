@@ -23,6 +23,9 @@ sys.path.insert(0, HERE)
 from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer
 from live import market_open, live_quote, TW_TZ
 from inst import get_inst, consensus
+from playbook import detect_playbook, playbook_view, load_stats
+
+_PB_STATS = load_stats()    # L2 劇本回測結果，啟動時載一次
 from position import (load_positions, position_risk, open_position,
                       close_position)
 from datetime import datetime
@@ -131,6 +134,9 @@ def panel_ep():
     p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
     p["verdict"] = verdict(p, b["win20"] if b and b.get("n", 0) > 0 else None)
     p["state_layer"] = state_layer(p)   # L1 狀態層(需 inst_consensus 已併入)
+    # L2 規則化劇本：判最後一根『已收盤』K(live 時取 -2)觸發哪些模板 + 回測 + 防呆
+    pb_idx = -2 if live else -1
+    p["playbook"] = playbook_view(detect_playbook(bars, pb_idx), _PB_STATS)
     p["comment"] = comment(p)
     # L3 持倉風控（V2 Phase 1）：該檔有持倉才回，順手累積 peak
     try:

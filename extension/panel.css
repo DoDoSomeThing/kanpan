@@ -88,6 +88,22 @@
 #kp-panel .kp-ck.on  { color: #4fe08a; }
 #kp-panel .kp-ck.off { color: #6b7799; }
 
+/* L2 劇本卡 */
+#kp-panel .kp-pb {
+  border-radius: 8px; padding: 8px 11px; margin: 6px 0;
+  border: 1px solid #1e2a4d; background: rgba(20,26,52,.4);
+}
+#kp-panel .kp-pb .kp-pbn { font-weight: 700; color: #e6eaf5; font-size: .92em;
+  display: flex; justify-content: space-between; align-items: center; }
+#kp-panel .kp-pb .kp-pbc { color: #8a96b8; font-size: .8em; margin: 3px 0; }
+#kp-panel .kp-pb .kp-pbstat { color: #97a3c2; font-size: .8em; }
+#kp-panel .kp-pb .kp-pbm { font-size: .8em; margin-top: 3px; color: #c8d0e6; }
+#kp-panel .kp-pbt { font-size: .78em; font-weight: 700; padding: 1px 7px; border-radius: 5px; }
+#kp-panel .kp-pbt.on   { color: #4fe08a; background: rgba(40,110,70,.3); }
+#kp-panel .kp-pbt.bad  { color: #ff7a7a; background: rgba(110,47,55,.3); }
+#kp-panel .kp-pbt.warn { color: #f4c000; background: rgba(110,90,20,.28); }
+#kp-panel .kp-nt { color: #e8a33d; }
+
 /* 分段標題（──── 文字 ────） */
 #kp-panel .kp-sec {
   display: flex; align-items: center; gap: 9px;

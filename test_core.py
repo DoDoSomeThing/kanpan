@@ -157,5 +157,41 @@ check("checklist 放量(1.5>1.2)", ckd["放量(>1.2x)"] is True)
 check("checklist POC穩定", ckd["POC穩定"] is True)
 check("狀態層 無法人時籌碼=—", core.state_layer({"inst_consensus": None})["chips"] == "—")
 
+# ---------- L2 規則化劇本：觸發判定 + 防呆 ----------
+import playbook as PB
+
+def _flat_bars(n, c, v):
+    return [{"date": f"2024-{1+i//28:02d}-{1+i%28:02d}", "open": c, "high": c,
+             "low": c, "close": c, "volume": v} for i in range(n)]
+
+# 突破型：前20根平盤 c=100/量1000，最後一根 close=110(創高) 且量 2000(>1.2×MV20)
+bk = _flat_bars(25, 100, 1000)
+bk[-1] = {"date": "2024-02-01", "open": 100, "high": 110, "low": 100, "close": 110, "volume": 2000}
+check("劇本 突破型觸發", "突破型" in PB.detect_playbook(bk, -1))
+
+# 跌破型：最後一根 close=90 破近20低
+bd = _flat_bars(25, 100, 1000)
+bd[-1] = {"date": "2024-02-01", "open": 100, "high": 100, "low": 90, "close": 90, "volume": 1000}
+check("劇本 跌破型觸發", "跌破型" in PB.detect_playbook(bd, -1))
+
+# 平盤不觸發任何模板
+check("劇本 平盤不觸發", PB.detect_playbook(_flat_bars(25, 100, 1000), -1) == [])
+
+# 防呆：no_edge（驗證<50）
+fake = {"templates": {"突破型": {"cond": "x", "n": 100, "avg20": 1.0, "mdd": -10,
+        "train": {"n": 50, "win20": 48.0}, "val": {"n": 50, "win20": 47.0}}}}
+v = PB.playbook_view(["突破型"], fake)
+check("劇本防呆 no_edge", v["cards"][0]["status"] == "no_edge")
+# 防呆：過擬合（訓練-驗證>10pp）
+fake2 = {"templates": {"突破型": {"cond": "x", "n": 100, "avg20": 1.0, "mdd": -10,
+         "train": {"n": 50, "win20": 65.0}, "val": {"n": 50, "win20": 52.0}}}}
+check("劇本防呆 overfit", PB.playbook_view(["突破型"], fake2)["cards"][0]["status"] == "overfit")
+# 防呆：樣本不足
+fake3 = {"templates": {"突破型": {"cond": "x", "n": 10, "avg20": 1.0, "mdd": -10,
+         "train": {"n": 5, "win20": 60.0}, "val": {"n": 5, "win20": 60.0}}}}
+check("劇本防呆 low_sample", PB.playbook_view(["突破型"], fake3)["cards"][0]["status"] == "low_sample")
+# 無觸發 → 不交易原因含「條件未成立」
+check("劇本 無觸發給不交易原因", PB.playbook_view([], fake)["no_trade"][0]["on"] is True)
+
 print(f"\n通過 {passed}　失敗 {failed}")
 sys.exit(1 if failed else 0)

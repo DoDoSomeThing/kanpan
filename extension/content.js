@@ -198,6 +198,24 @@
         <div class="kp-cks">${ck}</div>
       </div>` : "";
 
+    // L2 規則化劇本（綁回測·防呆）
+    const pb = d.playbook;
+    let pbCard = "";
+    if (pb) {
+      const tagCls = { ok: "on", no_edge: "bad", overfit: "warn", low_sample: "warn", unvalidated: "warn" };
+      const tagTxt = { ok: "✅可參考", no_edge: "🔴無 edge", overfit: "⚠過擬合", low_sample: "⚠樣本不足", unvalidated: "⚠未驗證" };
+      const cards = (pb.cards || []).map(cd => {
+        const st = cd.stat;
+        const sl2 = st ? `<div class="kp-pbstat">訓練 ${st.n_train.toLocaleString()}筆 ${st.win_train}%　驗證 ${st.n_val.toLocaleString()}筆 ${st.win_val}%　均${st.avg20 > 0 ? "+" : ""}${st.avg20}% 最差${st.mdd}%</div>` : "";
+        return `<div class="kp-pb"><div class="kp-pbn">▸ ${cd.name}<span class="kp-pbt ${tagCls[cd.status] || "warn"}">${tagTxt[cd.status] || cd.status}</span></div>
+          <div class="kp-pbc">${cd.cond}</div>${sl2}${cd.msg ? `<div class="kp-pbm">${cd.msg}</div>` : ""}</div>`;
+      }).join("");
+      const nt = (pb.no_trade || []).map(r => `☑ ${r.label}`).join("　");
+      pbCard = `<div class="kp-sec">L2 規則化劇本（綁回測·防呆）</div>` +
+        (cards || `<div class="kp-note">今日無模板觸發</div>`) +
+        (nt ? `<div class="kp-note kp-nt">不交易原因：${nt}</div>` : "");
+    }
+
     // 功能A 資料新鮮度 + 功能七 一致性警示
     const fr = d.freshness, ifr = d.inst_fresh, cons = d.consistency;
     const consWarn = (cons && !cons.ok)
@@ -258,6 +276,7 @@
       ${freshWarn}
       ${verdict}
       ${stateCard}
+      ${pbCard}
       ${ag}
       ${data}
       ${inst}

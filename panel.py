@@ -17,6 +17,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer
 from inst import get_inst, fmt_row, consensus
+from playbook import detect_playbook, playbook_view, load_stats as load_pb_stats
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CACHES = [
@@ -138,6 +139,24 @@ def render(sid, p, stats):
             e = evo.get(key)
             if e:
                 out.append(f"  {ico(e['ok'])} {e['k']}: {e['v']}")
+    pb = p.get("playbook")
+    if pb:
+        out += ["", "-" * 30, "L2 規則化劇本（綁回測·防呆）:"]
+        if pb["cards"]:
+            for cd in pb["cards"]:
+                st = cd.get("stat")
+                out.append(f"  ▸ {cd['name']}｜{cd['cond']}")
+                if st:
+                    out.append(f"    訓練 {st['n_train']:,}筆勝率{st['win_train']}%"
+                               f"｜驗證 {st['n_val']:,}筆勝率{st['win_val']}%"
+                               f"｜平均{st['avg20']:+}% 最差{st['mdd']}%")
+                tag = {"ok": "✅可參考", "low_sample": "⚠樣本不足", "unvalidated": "⚠未驗證",
+                       "overfit": "⚠過擬合", "no_edge": "🔴無 edge"}.get(cd["status"], cd["status"])
+                out.append(f"    {tag}{('：' + cd['msg']) if cd['msg'] else ''}")
+        else:
+            out.append("  今日無模板觸發")
+        if pb["no_trade"]:
+            out.append("  不交易原因: " + "　".join(f"☑{r['label']}" for r in pb["no_trade"]))
     out += ["", "-" * 30, "評語:", comment(p), "", line]
     return "\n".join(out)
 
@@ -160,6 +179,8 @@ def main():
     p["inst_fresh"] = data_freshness(p["inst"]["date"]) if p.get("inst") else None
     # 功能七：各資料源 vs 基準 bar 一致性
     p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
+    # L2 規則化劇本（最後一根已收盤 K）
+    p["playbook"] = playbook_view(detect_playbook(bars, -1), load_pb_stats())
     print(render(a.sid.upper(), p, load_stats()))
 
 
