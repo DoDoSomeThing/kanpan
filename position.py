@@ -162,6 +162,95 @@ def _days_between(d1, d2):
         return None
 
 
+# ---------- Benchmark 對照（P1：同期 0050 + 超額 α） ----------
+# 唯一重要的問題：「我這樣搞，贏過躺著買 0050 嗎?」
+# 不預測，只把「躺著買大盤」的同期報酬擺旁邊，逼自己誠實面對超額。
+BENCH_SID = "0050"
+
+
+def _d10(s):
+    """日期取前 10 字（去掉可能的時間部分），None→空字串。"""
+    return (s or "")[:10]
+
+
+def bench_return_pct(bench_bars, entry_date, cur_date=None):
+    """0050 同期報酬 %（純函式，給 test 釘）。
+    進場基準：第一根 date >= entry_date（進場當天或之後第一個交易日）。
+    結束基準：cur_date 當天或之前最後一根（None → 最末根 = 現在）。
+    資料不足（缺進場/結束棒、基準價為 0）回 None。"""
+    if not bench_bars or not entry_date:
+        return None
+    entry_date = _d10(entry_date)
+    e = next((b for b in bench_bars if _d10(b["date"]) >= entry_date), None)
+    if cur_date is None:
+        c = bench_bars[-1]
+    else:
+        cur_date = _d10(cur_date)
+        cands = [b for b in bench_bars if _d10(b["date"]) <= cur_date]
+        c = cands[-1] if cands else None
+    if not e or not c or not e.get("close") or not c.get("close"):
+        return None
+    return round((c["close"] - e["close"]) / e["close"] * 100, 1)
+
+
+def attach_alpha(r, bench_bars, cur_date=None):
+    """給持倉風控 dict 加 0050 同期對照 + 超額 α（未實現 − 0050同期）。
+    bench_bars None / 不足時 bench_pct=alpha_pct=None（面板自行省略該行）。"""
+    if r is None:
+        return r
+    bp = bench_return_pct(bench_bars, r.get("entry_date"), cur_date)
+    r["bench_sid"] = BENCH_SID
+    r["bench_pct"] = bp
+    r["alpha_pct"] = round(r["unreal_pct"] - bp, 1) if bp is not None else None
+    return r
+
+
+def closed_with_alpha(closed, bench_bars):
+    """平倉歷史每筆加 0050 同期（entry_date→exit_date）+ 已實現超額 α。
+    回新 list（不改原物件）。"""
+    out = []
+    for rec in closed:
+        bp = bench_return_pct(bench_bars, rec.get("entry_date"), rec.get("exit_date"))
+        rec = dict(rec)
+        rec["bench_sid"] = BENCH_SID
+        rec["bench_pct"] = bp
+        rec["alpha_pct"] = (round(rec["return_pct"] - bp, 1)
+                            if bp is not None else None)
+        out.append(rec)
+    return out
+
+
+def split_adjust(bars):
+    """還原除權/分割：台股日漲跌幅 ±10%，相鄰收盤比超出 [0.7, 1.4] 視為分割，
+    把分割日「之前」的收盤同乘係數，使序列連續（後復權的反向＝前復權舊價）。
+    只還原 close（bench 只用 close）。回新 list，不改原物件。
+    0050 2025 年分割（185→100 類）若進場日跨分割，不調整會把報酬算錯。"""
+    if not bars or len(bars) < 2:
+        return [dict(b) for b in bars] if bars else bars
+    out = [dict(b) for b in bars]
+    orig = [b.get("close") for b in bars]   # 用原始 close 偵測，避免讀到已改值連鎖誤觸發
+    factor = 1.0
+    # 由新到舊走，累積分割係數，套到更舊的棒
+    for i in range(len(out) - 1, 0, -1):
+        prev_c, cur_c = orig[i - 1], orig[i]
+        if prev_c and cur_c:
+            ratio = cur_c / prev_c   # 今日 / 昨日；分割日 << 1（如 1股拆4→約0.25）
+            if ratio < 0.7 or ratio > 1.4:
+                factor *= ratio       # 昨日(及更早)需乘此比值才接得上今日
+        if factor != 1.0 and out[i - 1].get("close"):
+            out[i - 1]["close"] = round(out[i - 1]["close"] * factor, 4)
+    return out
+
+
+def _load_bench(cache_path):
+    """載 0050 K 並做分割還原（給 CLI/掛 α 用）。失敗回 None（不擋主流程）。"""
+    try:
+        from core import load_bars
+        return split_adjust(load_bars(BENCH_SID, cache_path))
+    except Exception:
+        return None
+
+
 # ---------- CLI ----------
 def _cur_price_and_high(sid):
     """CLI 用：從 cache 最新棒取現價與今日 high（不打即時，CLI 求簡）。"""
@@ -174,13 +263,21 @@ def _cur_price_and_high(sid):
 
 def _fmt_risk(r):
     sh = f" × {r['shares']}張" if r.get("shares") is not None else ""
-    return (
-        f"持倉 {r['sid']}\n"
-        f"進場 {r['entry_price']}{sh}｜現價 {r['cur_price']}｜未實現 {r['unreal_pct']:+}%\n"
+    lines = [
+        f"持倉 {r['sid']}",
+        f"進場 {r['entry_price']}{sh}｜現價 {r['cur_price']}｜未實現 {r['unreal_pct']:+}%",
+    ]
+    # P1：同期 0050 對照 + 超額 α（有掛才秀）
+    if r.get("bench_pct") is not None:
+        lines.append(
+            f"同期 {r['bench_sid']} {r['bench_pct']:+}%｜超額 α {r['alpha_pct']:+}%"
+        )
+    lines += [
         f"生效出場：{r['effective_exit']}（{r['effective_by']}，"
-        f"硬停損{r['hard_stop']} / Trail高點{r['peak_price']}−8%={r['trail_stop']}）\n"
-        f"距觸發 {r['dist_pct']:+}%　{r['light']} {r['state']}"
-    )
+        f"硬停損{r['hard_stop']} / Trail高點{r['peak_price']}−8%={r['trail_stop']}）",
+        f"距觸發 {r['dist_pct']:+}%　{r['light']} {r['state']}",
+    ]
+    return "\n".join(lines)
 
 
 def main():
@@ -207,14 +304,17 @@ def main():
 
     a = ap.parse_args()
 
+    cache = os.path.join(HERE, "cache", "kline_cache.json.gz")
     if a.cmd == "list":
         d = load_positions()
         if not d["open"]:
             print("無持倉。用 python position.py open <sid> <進場價> <張數> 建立。")
             return
+        bench = _load_bench(cache)
         for sid in d["open"]:
             cur, high = _cur_price_and_high(sid)
             r = position_risk(sid, cur, today_high=high, d=d)
+            attach_alpha(r, bench)
             print(_fmt_risk(r))
             print("-" * 30)
         save_positions(d)   # 寫回 peak 累積
@@ -225,6 +325,7 @@ def main():
         if not r:
             print(f"{sid} 無持倉。")
             return
+        attach_alpha(r, _load_bench(cache))
         print(_fmt_risk(r))
     elif a.cmd == "open":
         pos = open_position(a.sid.upper(), a.entry_price, a.shares, a.date, a.note)

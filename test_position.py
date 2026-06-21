@@ -90,5 +90,75 @@ check("closed 持有日數", rec["hold_days"] == 14)
 # 無持倉 → position_risk 回 None
 check("無持倉回 None", P.position_risk("9999", 50.0) is None)
 
+# ---------- P1：Benchmark 0050 同期 + 超額 α ----------
+# 0050 K：進場日 100 → 結束日 110 = +10%
+bench = [
+    {"date": "2026-06-17", "close": 98.0},
+    {"date": "2026-06-18", "close": 100.0},
+    {"date": "2026-06-25", "close": 105.0},
+    {"date": "2026-07-02", "close": 110.0},
+    {"date": "2026-07-10", "close": 112.0},
+]
+# 進場 2026-06-18(命中100)、結束 2026-07-02(命中110) → +10.0%
+check("bench 同期報酬%", P.bench_return_pct(bench, "2026-06-18", "2026-07-02") == 10.0)
+# 進場日非交易日 → 取之後第一根（06-19 → 06-25 的 105）
+check("bench 進場取之後第一根", P.bench_return_pct(bench, "2026-06-19", "2026-07-02")
+      == round((110.0 - 105.0) / 105.0 * 100, 1))
+# cur_date=None → 取最末根 112；進場 06-18=100 → +12.0%
+check("bench cur=None 取最末根", P.bench_return_pct(bench, "2026-06-18") == 12.0)
+# 結束日早於所有棒 → 無結束棒 → None
+check("bench 結束太早回 None", P.bench_return_pct(bench, "2026-06-18", "2026-01-01") is None)
+# 進場晚於所有棒 → 無進場棒 → None
+check("bench 進場太晚回 None", P.bench_return_pct(bench, "2026-12-31", None) is None)
+# 空 bench → None
+check("bench 空資料回 None", P.bench_return_pct([], "2026-06-18", None) is None)
+# 結束棒 close=None → 不丟 TypeError，回 None
+bench_none = [{"date": "2026-06-18", "close": 100.0},
+              {"date": "2026-07-02", "close": None}]
+check("bench 結束close=None回 None",
+      P.bench_return_pct(bench_none, "2026-06-18", "2026-07-02") is None)
+
+# attach_alpha：未實現 +10、同期 +12 → α = -2.0（輸給躺著買）
+r_a = {"unreal_pct": 10.0, "entry_date": "2026-06-18"}
+P.attach_alpha(r_a, bench)   # cur=None → 同期 +12.0
+check("attach_alpha bench_pct", r_a["bench_pct"] == 12.0)
+check("attach_alpha α = 未實現−同期", r_a["alpha_pct"] == -2.0)
+check("attach_alpha bench_sid", r_a["bench_sid"] == "0050")
+# bench 不足 → bench_pct/alpha 皆 None
+r_b = {"unreal_pct": 5.0, "entry_date": "2099-01-01"}
+P.attach_alpha(r_b, bench)
+check("attach_alpha 不足→None", r_b["bench_pct"] is None and r_b["alpha_pct"] is None)
+# r=None 安全回 None
+check("attach_alpha r=None 安全", P.attach_alpha(None, bench) is None)
+
+# closed_with_alpha：已實現 +5、同期(06-18→07-02)=+10 → α=-5.0；不改原物件
+closed = [{"return_pct": 5.0, "entry_date": "2026-06-18", "exit_date": "2026-07-02"}]
+out = P.closed_with_alpha(closed, bench)
+check("closed_with_alpha α", out[0]["alpha_pct"] == round(5.0 - 10.0, 1))
+check("closed_with_alpha 不改原物件", "alpha_pct" not in closed[0])
+
+# ---------- P1.5：split_adjust 分割還原 ----------
+# 1股拆2：價格從 200 → 100（隔日比 0.5，落在 [0.7,1.4] 外）
+# 還原後分割前的 200 應乘 0.5 = 100，序列連續
+raw = [
+    {"date": "2026-01-01", "close": 200.0},
+    {"date": "2026-01-02", "close": 100.0},   # 分割日
+    {"date": "2026-01-03", "close": 105.0},
+]
+adj = P.split_adjust(raw)
+check("split 分割前還原 200→100", adj[0]["close"] == 100.0)
+check("split 分割後不動", adj[1]["close"] == 100.0 and adj[2]["close"] == 105.0)
+check("split 不改原物件", raw[0]["close"] == 200.0)
+# 正常波動（無分割）不調整
+normal = [{"date": "2026-01-01", "close": 100.0},
+          {"date": "2026-01-02", "close": 105.0},
+          {"date": "2026-01-03", "close": 103.0}]
+adj2 = P.split_adjust(normal)
+check("split 正常波動不動", [b["close"] for b in adj2] == [100.0, 105.0, 103.0])
+# 還原後同期報酬連續（跨分割算對）：分割前 200 進、分割後 105 → 還原後 100→105 = +5%
+check("split 跨分割報酬正確",
+      P.bench_return_pct(adj, "2026-01-01", "2026-01-03") == 5.0)
+check("split 空/單筆安全", P.split_adjust([]) == [] and len(P.split_adjust(raw[:1])) == 1)
+
 print(f"\n通過 {passed}　失敗 {failed}")
 sys.exit(1 if failed else 0)

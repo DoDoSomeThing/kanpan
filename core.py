@@ -917,6 +917,25 @@ def evolution(bars, idx, p):
     return evo
 
 
+def wilson_ci(rate_pct, n, z=1.96):
+    """勝率的 Wilson 95% 信賴區間（ROADMAP P4）。
+    rate_pct=桶內勝率%，n=樣本數。回 (lo%, hi%)；n<=0 或 rate 無效回 None。
+    為何 Wilson 不用常態近似：小樣本 / 接近 0/1 時常態會超出 [0,1]、低估不確定。
+    用途：30 筆的 47% 與 3000 筆的 47% CI 寬度天差地別 → 避免過度解讀自己分數。"""
+    if not n or n <= 0 or rate_pct is None:
+        return None
+    p = rate_pct / 100.0
+    if p < 0 or p > 1:
+        return None
+    z2 = z * z
+    denom = 1 + z2 / n
+    center = (p + z2 / (2 * n)) / denom
+    half = (z * ((p * (1 - p) / n + z2 / (4 * n * n)) ** 0.5)) / denom
+    lo = max(0.0, center - half)
+    hi = min(1.0, center + half)
+    return (round(lo * 100, 1), round(hi * 100, 1))
+
+
 def verdict(p, win20_rate=None):
     """判讀燈號：綜合結構/動能/量價/共識 → 偏多偏空現況研判。
     信心綁回測勝率(win20_rate)，沒數字不喊信心。描述現況，非保證獲利。"""

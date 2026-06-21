@@ -15,9 +15,11 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer, wilson_ci
 from inst import get_inst, fmt_row, consensus
 from playbook import detect_playbook, playbook_view, load_stats as load_pb_stats
+from position import load_positions, position_risk, attach_alpha, _load_bench
+import behavior as BH
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_CACHES = [
@@ -81,10 +83,13 @@ def render(sid, p, stats):
     if stats:
         b = bucket_label(p["vp_score"], stats)
         if b and b["n"] > 0:
+            ci = wilson_ci(b["win20"], b["n"])
+            ci_txt = f"（95% CI {ci[0]}~{ci[1]}%）" if ci else ""
             out += [
                 f"歷史統計（分數 {b['lo']}~{b['hi']} 的過去表現，{stats['period']}）:",
                 f"  樣本數:   {b['n']:,}",
                 f"  5日勝率:  {b['win5']}%　10日: {b['win10']}%　20日: {b['win20']}%",
+                f"  20日勝率區間: {b['win20']}% {ci_txt}",
                 f"  平均報酬: {b['avg20']:+.1f}% (20日)",
                 f"  最大回撤: {b['mdd']:.1f}%",
             ]
@@ -157,6 +162,18 @@ def render(sid, p, stats):
             out.append("  今日無模板觸發")
         if pb["no_trade"]:
             out.append("  不交易原因: " + "　".join(f"☑{r['label']}" for r in pb["no_trade"]))
+    pos = p.get("position")
+    if pos:
+        out += ["", "-" * 30, "L3 持倉風控:"]
+        out.append(f"  進場 {pos['entry_price']}｜現價 {pos['cur_price']}｜未實現 {pos['unreal_pct']:+}%")
+        if pos.get("bench_pct") is not None:
+            out.append(f"  同期 {pos['bench_sid']} {pos['bench_pct']:+}%｜超額 α {pos['alpha_pct']:+}%")
+        out.append(f"  生效出場 {pos['effective_exit']}（{pos['effective_by']}）｜距觸發 {pos['dist_pct']:+}%　{pos['light']} {pos['state']}")
+    bw = p.get("behavior")
+    if bw:
+        out += ["", "-" * 30, "⚠ 行為守門:"]
+        for w in bw:
+            out.append(f"  • {w['msg']}")
     out += ["", "-" * 30, "評語:", comment(p), "", line]
     return "\n".join(out)
 
@@ -181,7 +198,15 @@ def main():
     p["consistency"] = consistency_check(p.get("ref_date"), p.get("inst"))
     # L2 規則化劇本（最後一根已收盤 K）
     p["playbook"] = playbook_view(detect_playbook(bars, -1), load_pb_stats())
-    print(render(a.sid.upper(), p, load_stats()))
+    # L3 持倉風控 + 同期 0050 α（該檔有持倉才回）
+    sid = a.sid.upper()
+    risk = position_risk(sid, bars[-1]["close"], today_high=bars[-1].get("high"))
+    p["position"] = attach_alpha(risk, _load_bench(cache)) if risk else None
+    # P3 行為守門：追高/凹單(單股) + 頻率(全域跨檔，餵全部 closed)
+    pos_d = load_positions()
+    p["behavior"] = BH.behavior_checks(
+        p=p, risk=p["position"], closed_records=pos_d["closed"])
+    print(render(sid, p, load_stats()))
 
 
 if __name__ == "__main__":

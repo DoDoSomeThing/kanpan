@@ -193,5 +193,22 @@ check("劇本防呆 low_sample", PB.playbook_view(["突破型"], fake3)["cards"]
 # 無觸發 → 不交易原因含「條件未成立」
 check("劇本 無觸發給不交易原因", PB.playbook_view([], fake)["no_trade"][0]["on"] is True)
 
+# ---------- P4：Wilson 95% 信賴區間 ----------
+# 50% / n=100 → 對稱、約 40.4~59.6
+ci = core.wilson_ci(50.0, 100)
+check("wilson 50%n100 含中心", ci[0] < 50.0 < ci[1])
+check("wilson 50%n100 區間合理", abs(ci[0] - 40.4) < 0.6 and abs(ci[1] - 59.6) < 0.6)
+# 小樣本 CI 寬，大樣本 CI 窄（同 50%）
+w_small = core.wilson_ci(50.0, 30)
+w_big = core.wilson_ci(50.0, 3000)
+check("wilson 小樣本比大樣本寬",
+      (w_small[1] - w_small[0]) > (w_big[1] - w_big[0]))
+# 邊界鉗在 [0,100]
+check("wilson 上界<=100", core.wilson_ci(99.0, 20)[1] <= 100.0)
+check("wilson 下界>=0", core.wilson_ci(1.0, 20)[0] >= 0.0)
+# n<=0 / rate None → None
+check("wilson n=0 回 None", core.wilson_ci(50.0, 0) is None)
+check("wilson rate None 回 None", core.wilson_ci(None, 100) is None)
+
 print(f"\n通過 {passed}　失敗 {failed}")
 sys.exit(1 if failed else 0)

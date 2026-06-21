@@ -20,14 +20,18 @@ from flask_cors import CORS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer
+from core import (load_bars, compute_panel, comment, verdict, data_freshness,
+                  consistency_check, state_layer, wilson_ci)
 from live import market_open, live_quote, TW_TZ
 from inst import get_inst, consensus
 from playbook import detect_playbook, playbook_view, load_stats
 
 _PB_STATS = load_stats()    # L2 劇本回測結果，啟動時載一次
 from position import (load_positions, position_risk, open_position,
-                      close_position)
+                      close_position, attach_alpha, closed_with_alpha,
+                      _load_bench)
+import portfolio as PF
+import behavior as BH
 from datetime import datetime
 
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
@@ -44,7 +48,10 @@ def bucket_of(score):
         return None
     for b in _stats["buckets"]:
         if b["lo"] <= score <= b["hi"]:
-            return {**b, "period": _stats["period"]}
+            # P4：勝率桶加 20 日勝率 Wilson 95% CI（N 已在 b["n"]）
+            ci = wilson_ci(b.get("win20"), b.get("n"))
+            return {**b, "period": _stats["period"],
+                    "win20_ci": list(ci) if ci else None}
     return None
 
 
@@ -142,9 +149,18 @@ def panel_ep():
     try:
         cur = bars[-1]["close"]
         hi = bars[-1].get("high")
-        p["position"] = position_risk(sid, cur, today_high=hi)
+        p["position"] = attach_alpha(position_risk(sid, cur, today_high=hi),
+                                     _load_bench(CACHE))
     except Exception:
         p["position"] = None
+    # P3 行為守門：追高（無倉，單股）/ 凹單（破生效未出，單股）/
+    #   頻率（近 30 日過度交易，**全域跨檔**：餵全部 closed，非只本檔）
+    try:
+        _d = load_positions()
+        p["behavior"] = BH.behavior_checks(
+            p=p, risk=p.get("position"), closed_records=_d["closed"])
+    except Exception:
+        p["behavior"] = []
     return jsonify(p)
 
 
@@ -160,19 +176,21 @@ def position_ep():
             cur, hi = _cur_price_high(sid)
             if cur is None:
                 return jsonify(error="無 K 線 cache 或查無此檔"), 404
-            r = position_risk(sid, cur, today_high=hi)
+            r = attach_alpha(position_risk(sid, cur, today_high=hi),
+                             _load_bench(CACHE))
             if not r:
                 return jsonify(sid=sid, position=None)
             return jsonify(sid=sid, position=r)
         # 無 sid → 列全部
         d = load_positions()
+        bench = _load_bench(CACHE)
         out = []
         for s in list(d["open"].keys()):
             cur, hi = _cur_price_high(s)
             if cur is None:
                 continue
-            out.append(position_risk(s, cur, today_high=hi))
-        return jsonify(open=out, closed=d["closed"])
+            out.append(attach_alpha(position_risk(s, cur, today_high=hi), bench))
+        return jsonify(open=out, closed=closed_with_alpha(d["closed"], bench))
 
     # POST：開 / 平倉
     body = request.get_json(silent=True) or {}
@@ -193,6 +211,40 @@ def position_ep():
         return jsonify(error="action 需為 open / close"), 400
     except (KeyError, ValueError) as e:
         return jsonify(error=str(e)), 400
+
+
+@app.get("/portfolio")
+def portfolio_ep():
+    """組合層視圖（P1.5 + P2）：
+      cumulative  累計超額 α（所有平倉 vs 同期 0050）
+      correlation 持倉兩兩相關係數（揭露假分散）
+      high_corr   相關 >=0.7 的對
+      exposure    各檔曝險權重（?cash=現金元 選填 → 加投資比）
+    無持倉時 correlation/exposure 空，cumulative 仍回（看歷史對帳）。"""
+    d = load_positions()
+    bench = _load_bench(CACHE)
+    cumulative = PF.cumulative_alpha(closed_with_alpha(d["closed"], bench))
+
+    holdings, bars_map = [], {}
+    for s in list(d["open"].keys()):
+        cur, _hi = _cur_price_high(s)
+        if cur is None:
+            continue
+        holdings.append({"sid": s, "shares": d["open"][s].get("shares"),
+                         "price": cur})
+        try:
+            bars_map[s] = load_bars(s, CACHE)
+        except KeyError:
+            pass
+
+    matrix = PF.correlation_matrix(bars_map) if len(bars_map) >= 2 else []
+    cash = request.args.get("cash", type=float)
+    return jsonify(
+        cumulative=cumulative,
+        correlation=matrix,
+        high_corr=PF.high_corr_pairs(matrix),
+        exposure=PF.exposure(holdings, cash=cash),
+    )
 
 
 def _cur_price_high(sid):

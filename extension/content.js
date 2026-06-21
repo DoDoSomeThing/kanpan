@@ -114,9 +114,16 @@
     const cls = pos.light === "🟢" ? "g" : pos.light === "🟡" ? "y" : "r";
     const sh = pos.shares != null ? ` × ${pos.shares}張` : "";
     const uCls = pos.unreal_pct >= 0 ? "kp-buy" : "kp-sell";
+    // P1：同期 0050 對照 + 超額 α（贏過躺著買大盤嗎?）
+    let benchLine = "";
+    if (pos.bench_pct != null) {
+      const aCls = pos.alpha_pct >= 0 ? "kp-buy" : "kp-sell";
+      benchLine = `<div class="pm">同期 ${pos.bench_sid} ${pos.bench_pct > 0 ? "+" : ""}${pos.bench_pct}%｜超額 α <span class="${aCls}">${pos.alpha_pct > 0 ? "+" : ""}${pos.alpha_pct}%</span></div>`;
+    }
     return `<div class="kp-pos ${cls}">
       <div class="ph">持倉 ${pos.sid}　${pos.light} ${pos.state}</div>
       <div class="pm">進場 ${pos.entry_price}${sh}｜現價 <span class="px">${pos.cur_price}</span>｜未實現 <span class="${uCls}">${pos.unreal_pct > 0 ? "+" : ""}${pos.unreal_pct}%</span></div>
+      ${benchLine}
       <div class="pm">生效出場：<span class="px">${pos.effective_exit}</span>（${pos.effective_by}，硬停損${pos.hard_stop} / Trail高點${pos.peak_price}−8%=${pos.trail_stop}）</div>
       <div class="pm">距觸發 <span class="px">${pos.dist_pct > 0 ? "+" : ""}${pos.dist_pct}%</span></div>
       <div class="pa"><button class="kp-pclose" data-sid="${pos.sid}" data-px="${pos.cur_price}">平倉（現價 ${pos.cur_price}）</button></div>
@@ -257,6 +264,7 @@
       <details><summary>歷史統計（分數 ${b.lo}~${b.hi}）</summary>
         <div class="kp-row"><span>樣本數</span><span>${b.n.toLocaleString()}</span></div>
         <div class="kp-row"><span>5/10/20日勝率</span><span>${b.win5}/${b.win10}/${b.win20}%</span></div>
+        ${b.win20_ci ? `<div class="kp-row"><span>20日勝率95%CI</span><span>${b.win20_ci[0]}~${b.win20_ci[1]}%</span></div>` : ""}
         <div class="kp-row"><span>平均報酬20日</span><span>${b.avg20 > 0 ? "+" : ""}${b.avg20}%</span></div>
         <div class="kp-row"><span>最大回撤</span><span class="kp-sell">${b.mdd}%</span></div>
         <div class="kp-note">${b.period}</div></details>` : "";
@@ -271,8 +279,15 @@
       ${instRow("自營", d.inst.dealer)}
       ${ic ? `<div class="kp-row"><span>法人共識</span><span class="${icCls}">${ic.light} ${ic.status}（主導${ic.leader}${ic.neutral && ic.neutral.length ? "，" + ic.neutral.join("/") + "中性" : ""}）</span></div>` : ""}` : "";
 
+    // P3 行為守門：追高 / 凹單 / 頻率（有才秀）
+    const bw = d.behavior || [];
+    const behavior = bw.length ? `<div class="kp-behavior">${
+      bw.map(w => `<div class="kp-bwarn">⚠ ${w.msg}</div>`).join("")
+    }</div>` : "";
+
     p.innerHTML = head(d, live) + `<div class="kp-body">
       ${d.position ? posCard(d.position) : posForm(d.sid, d.close)}
+      ${behavior}
       ${freshWarn}
       ${verdict}
       ${stateCard}
