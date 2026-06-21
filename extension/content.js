@@ -230,7 +230,7 @@
     // A–G 拆解（字母徽章；含 D收盤位置/E整數/F RollingPOC，故下方不再重複）
     const ico = ok => ok === true ? "✅" : ok === false ? "🔴" : "⚪";
     const E = d.evo || {};
-    const badge = { A: "A", B: "B", C_top: "C", C_bot: "C", D: "D", E: "E", F: "F", G: "G", H: "H", BO: "量" };
+    const badge = { A: "A", B: "B", C_top: "C↑", C_bot: "C↓", D: "D", E: "E", F: "F", G: "G", H: "H", BO: "量" };
     const agRows = ["A", "B", "C_top", "C_bot", "D", "E", "F", "G", "H", "BO"]
       .filter(k => E[k])
       .map(k => `<div class="kp-ag"><span class="bd">${badge[k]}</span>` +

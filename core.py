@@ -844,7 +844,7 @@ def evolution(bars, idx, p):
         d = round((op - poc) / poc * 100, 2)
         evo["A"] = {"k": "POC偏離度", "ok": abs(d) < 1.5,
                     "v": f"開盤{'貼近' if abs(d) < 1.5 else '偏離'}核心價 {abs(d)}%｜"
-                         f"{'均衡開盤' if abs(d) < 1.5 else ('開高走勢' if d > 0 else '開低走勢')}"}
+                         f"{'開在核心區' if abs(d) < 1.5 else ('開於核心之上' if d > 0 else '開於核心之下')}"}
 
     # B 市場狀態：VA寬度 動態(20) vs 靜態(60)（日K近似）
     try:
