@@ -21,7 +21,16 @@ import sys
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-POS_PATH = os.path.join(HERE, "positions.json")
+# 持倉檔位置（跨機共用）：優先順序
+#   1. 環境變數 KANPAN_POSITIONS（手動指定）
+#   2. Dropbox 共用檔（兩台機同步，免 symlink/admin）：~/Dropbox/AI_agent/600_Project/kanpan-data/
+#   3. 退回本機 repo 內（Dropbox 沒裝時）
+# 仍不進 git（隱私）；Dropbox 同步那顆真檔，兩台讀同一份不漂。
+_DROPBOX_POS = os.path.join(os.path.expanduser("~"), "Dropbox", "AI_agent",
+                            "600_Project", "kanpan-data", "positions.json")
+POS_PATH = (os.getenv("KANPAN_POSITIONS")
+            or (_DROPBOX_POS if os.path.isdir(os.path.dirname(_DROPBOX_POS))
+                else os.path.join(HERE, "positions.json")))
 
 HARD_STOP_PCT = 0.04   # 硬停損：entry × (1 − 4%)，固定從進場價算
 TRAIL_PCT = 0.08       # Trail：peak × (1 − 8%)，高點回落保護
