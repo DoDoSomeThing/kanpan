@@ -23,6 +23,7 @@ grpAna     = "判讀 / 訊號"
 showPanel  = input.bool(true, "位置判讀面板",   group=grpAna)
 showSignals= input.bool(true, "進出場箭頭",     group=grpAna)
 showVerdict= input.bool(true, "紅綠燈 verdict", group=grpAna)
+showATH    = input.bool(true, "歷史最高線",     group=grpAna, tooltip="圖上載入資料的全段最高價,自動畫一條線")
 
 // ===== 錨點 + Fib 價位(每根算,訊號要用)=====
 hiP = manHi > 0 ? manHi : na
@@ -40,6 +41,13 @@ f1    = loP
 
 ma5  = ta.sma(close, 5)
 ma20 = ta.sma(close, 20)
+
+// ===== 歷史最高(全段 running max)=====
+var float ath  = na
+var int   athX = na
+if na(ath) or high > ath
+    ath  := high
+    athX := bar_index
 
 // ===== verdict(每根算)=====
 bull = ok and close > f5   and ma5 > ma20 and close > ma20
@@ -111,8 +119,19 @@ if barstate.islast and ok
         array.push(fLines, line.new(xL, h4, xR, h4, color=c4, width=2))
         array.push(fLabs,  label.new(xR, h4, str.format("{0} {1}", h4 > px ? "壓力" : "支撐", str.tostring(h4)), style=label.style_label_left, color=color.new(c4, 50), textcolor=color.white, size=size.small))
 
+// ===== 歷史最高線(最後一根重畫)=====
+var line  athLine = na
+var label athLab  = na
+if barstate.islast
+    line.delete(athLine)
+    label.delete(athLab)
+    if showATH and not na(ath)
+        dist = (ath - close) / close * 100
+        athLine := line.new(athX, ath, bar_index + rightExt, ath, color=color.fuchsia, width=2, style=line.style_dashed)
+        athLab  := label.new(bar_index + rightExt, ath, str.format("歷史高 {0} ({1}%)", str.tostring(ath, format.mintick), str.tostring(dist, "#.#")), style=label.style_label_left, color=color.new(color.fuchsia, 40), textcolor=color.white, size=size.small)
+
 // ===== 位置判讀面板(右上表格)=====
-var table panel = table.new(position.top_right, 2, 6, border_width=1, frame_color=color.gray, frame_width=1)
+var table panel = table.new(position.bottom_right, 2, 6, border_width=1, frame_color=color.gray, frame_width=1)
 
 if barstate.islast
     if showPanel and ok
@@ -132,21 +151,21 @@ if barstate.islast
         dnPct = na(dn) ? na : (dn - px) / px * 100
 
         table.clear(panel, 0, 0, 1, 5)
-        table.cell(panel, 0, 0, "判讀", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
-        table.cell(panel, 1, 0, showVerdict ? vtxt : "—", text_color=color.white, bgcolor=showVerdict ? vcol : color.new(color.gray, 30), text_size=size.small)
-        table.cell(panel, 0, 1, "現價", text_color=color.silver, text_size=size.small)
-        table.cell(panel, 1, 1, str.tostring(px, format.mintick), text_color=color.white, text_size=size.small)
-        table.cell(panel, 0, 2, "位置", text_color=color.silver, text_size=size.small)
-        table.cell(panel, 1, 2, zone, text_color=color.white, text_size=size.small)
-        table.cell(panel, 0, 3, "壓力", text_color=color.silver, text_size=size.small)
-        table.cell(panel, 1, 3, na(up) ? "—(已破頂)" : str.format("{0} (+{1}%)", str.tostring(up, format.mintick), str.tostring(upPct, "#.#")), text_color=color.red, text_size=size.small)
-        table.cell(panel, 0, 4, "支撐", text_color=color.silver, text_size=size.small)
-        table.cell(panel, 1, 4, na(dn) ? "—(已破底)" : str.format("{0} ({1}%)", str.tostring(dn, format.mintick), str.tostring(dnPct, "#.#")), text_color=color.green, text_size=size.small)
-        table.cell(panel, 0, 5, "區間", text_color=color.silver, text_size=size.small)
-        table.cell(panel, 1, 5, str.format("{0} ~ {1}", str.tostring(f1, format.mintick), str.tostring(f0, format.mintick)), text_color=color.white, text_size=size.small)
+        table.cell(panel, 0, 0, "判讀", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.normal)
+        table.cell(panel, 1, 0, showVerdict ? vtxt : "—", text_color=color.white, bgcolor=showVerdict ? vcol : color.new(color.gray, 30), text_size=size.normal)
+        table.cell(panel, 0, 1, "現價", text_color=color.silver, text_size=size.normal)
+        table.cell(panel, 1, 1, str.tostring(px, format.mintick), text_color=color.white, text_size=size.normal)
+        table.cell(panel, 0, 2, "位置", text_color=color.silver, text_size=size.normal)
+        table.cell(panel, 1, 2, zone, text_color=color.white, text_size=size.normal)
+        table.cell(panel, 0, 3, "壓力", text_color=color.silver, text_size=size.normal)
+        table.cell(panel, 1, 3, na(up) ? "—(已破頂)" : str.format("{0} (+{1}%)", str.tostring(up, format.mintick), str.tostring(upPct, "#.#")), text_color=color.red, text_size=size.normal)
+        table.cell(panel, 0, 4, "支撐", text_color=color.silver, text_size=size.normal)
+        table.cell(panel, 1, 4, na(dn) ? "—(已破底)" : str.format("{0} ({1}%)", str.tostring(dn, format.mintick), str.tostring(dnPct, "#.#")), text_color=color.green, text_size=size.normal)
+        table.cell(panel, 0, 5, "區間", text_color=color.silver, text_size=size.normal)
+        table.cell(panel, 1, 5, str.format("{0} ~ {1}", str.tostring(f1, format.mintick), str.tostring(f0, format.mintick)), text_color=color.white, text_size=size.normal)
     else
         table.clear(panel, 0, 0, 1, 5)
-        table.cell(panel, 0, 0, "請填手動高/低點", text_color=color.yellow, bgcolor=color.new(color.black, 20), text_size=size.small)
+        table.cell(panel, 0, 0, "請填手動高/低點", text_color=color.yellow, bgcolor=color.new(color.black, 20), text_size=size.normal)
 
 // ===== 均線 =====
 plot(showMA5  ? ma5  : na, "MA5",  color=color.orange, linewidth=1)
