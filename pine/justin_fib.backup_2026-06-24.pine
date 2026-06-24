@@ -2,13 +2,10 @@
 indicator("Justin Fib + 關鍵價位", overlay=true, max_lines_count=200, max_labels_count=200, max_boxes_count=100)
 
 // ===== 模式 =====
-mode     = input.string("Pivot 真轉折", "波段抓法", options=["Pivot 真轉折", "Lookback 區間極值", "手動鎖定價"], group="模式")
+mode     = input.string("Pivot 真轉折", "波段抓法", options=["Pivot 真轉折", "Lookback 區間極值"], group="模式")
 pvLeft   = input.int(10, "Pivot 左腳", minval=1, group="模式", tooltip="只 Pivot 模式用")
 pvRight  = input.int(10, "Pivot 右腳", minval=1, group="模式", tooltip="只 Pivot 模式用")
 lookback = input.int(60, "Lookback 回看天數", minval=5, group="模式", tooltip="只 Lookback 模式用")
-manHi    = input.price(0.0, "手動高點價", group="模式", tooltip="只手動模式用;打你自己挑的波段高點(例 505)")
-manLo    = input.price(0.0, "手動低點價", group="模式", tooltip="只手動模式用;打你自己挑的波段低點(例 312.5)")
-manBack  = input.int(60, "手動模式左緣回看", minval=5, group="模式", tooltip="只手動模式用;Fib 線從現在往左畫幾根")
 
 showMA5  = input.bool(true, "MA5",  group="均線")
 showMA20 = input.bool(true, "MA20", group="均線")
@@ -36,8 +33,7 @@ vacBins = input.int(50,     "VP 分格",       minval=10,  group=grpVac)
 vacThr  = input.float(0.30, "低量門檻(×均量)", minval=0.05, maxval=1.0, group=grpVac)
 vacNear = input.float(15.0, "只標現價±%內",  minval=1,   group=grpVac)
 
-isPivot  = mode == "Pivot 真轉折"
-isManual = mode == "手動鎖定價"
+isPivot = mode == "Pivot 真轉折"
 
 // ===== 抓波段高低 =====
 // Pivot 模式
@@ -82,10 +78,10 @@ lbHi = ta.highest(high, lookback)
 lbLo = ta.lowest(low,  lookback)
 
 // 統一輸出
-hiP = isManual ? (manHi > 0 ? manHi : na) : isPivot ? pvHiP : lbHi
-loP = isManual ? (manLo > 0 ? manLo : na) : isPivot ? pvLoP : lbLo
-hiX = isManual ? bar_index - manBack : isPivot ? pvHiX : bar_index - lookback
-loX = isManual ? bar_index - manBack : isPivot ? pvLoX : bar_index - lookback
+hiP = isPivot ? pvHiP : lbHi
+loP = isPivot ? pvLoP : lbLo
+hiX = isPivot ? pvHiX : bar_index - lookback
+loX = isPivot ? pvLoX : bar_index - lookback
 
 // ===== Fib =====
 levels = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.618)
