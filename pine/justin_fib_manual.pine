@@ -1,4 +1,4 @@
-//@version=5
+//@version=6
 indicator("Justin Fib 手動 + 判讀", overlay=true, max_lines_count=100, max_labels_count=100, max_boxes_count=100)
 
 // ===== 手動鎖定波段高低 =====
@@ -25,6 +25,49 @@ showSignals= input.bool(true, "進出場箭頭",     group=grpAna)
 showVerdict= input.bool(true, "紅綠燈 verdict", group=grpAna)
 showATH    = input.bool(true, "歷史最高線",     group=grpAna, tooltip="圖上載入資料的全段最高價,自動畫一條線")
 
+// ===== 量價分布判讀(真撐 vs 真空)=====
+grpVP    = "量價判讀(真撐/真空)"
+showVP   = input.bool(true,  "量價判讀(現價/水平線標真撐或真空)", group=grpVP, tooltip="真支撐壓力=量價分布高量區(很多人套);真空=低量區(沒撐,價快速穿過)")
+showHVN  = input.bool(true,  "畫高量牆(綠)/真空帶(紫)", group=grpVP)
+vpLen    = input.int(250,    "VP 窗(根)",       minval=20,  group=grpVP)
+vpBins   = input.int(50,     "VP 分格",         minval=10,  group=grpVP)
+hvnThr   = input.float(0.55, "高量牆門檻(×最大量)", minval=0.1, maxval=1.0, group=grpVP)
+lvnThr   = input.float(0.25, "真空門檻(×最大量)",  minval=0.05, maxval=1.0, group=grpVP)
+vpNear   = input.float(25.0, "高量牆/真空帶只畫現價±%內", minval=1, group=grpVP)
+// ===== 自動水平線(歷史轉折群聚)=====
+grpHL     = "自動水平線(歷史測過的價)"
+autoFill  = input.bool(true,  "水平線沒填→自動抓歷史轉折", group=grpHL, tooltip="水平線1-4 哪個沒手填,自動抓「歷史被測過好幾次」的價位(壓力/支撐);手填優先")
+hlPivLen  = input.int(5,    "轉折靈敏度(左右各幾根)", minval=2, group=grpHL)
+hlTolPct  = input.float(1.5, "群聚容差%(多近算同一條)", minval=0.2, group=grpHL)
+hlNearPct = input.float(20.0,"只抓現價±%內",          minval=2, group=grpHL)
+hlMinTouch= input.int(2,    "最少被測幾次才算",        minval=1, group=grpHL)
+showHLLab = input.bool(true, "顯示自動水平標籤(測N次)", group=grpHL)
+hlLabGap  = input.int(15,   "自動標籤往右幾根(避開Fib)", minval=0, group=grpHL)
+
+// ===== 自動撐壓(pivot + ATR;失效自動刪、相近自動合併)=====
+grpAuto    = "自動撐壓(pivot)"
+showAutoSR = input.bool(false, "自動撐壓區(預設關)", group=grpAuto, tooltip="自動抓 pivot 高/低當撐壓,收破自動刪、太近自動併。手填水平線仍優先")
+autoPivLen = input.int(10,   "轉折長度(左右各幾根)", minval=2, group=grpAuto)
+autoAtrLen = input.int(14,   "區厚 ATR 長度",      minval=1, group=grpAuto)
+autoZoneAtr= input.float(0.25,"區厚(×ATR)",        minval=0.05, group=grpAuto)
+autoMaxSR  = input.int(6,    "每側最多保留",        minval=1, group=grpAuto)
+
+// ===== 多時間框方向(均線)=====
+grpMTF  = "多時框方向"
+showMTF = input.bool(true, "多時框方向表", group=grpMTF, tooltip="三個週期各看快慢均線排列→多/空/中,一眼看大小週期同不同向")
+mtfFast = input.int(5,  "快均線", minval=1, group=grpMTF)
+mtfSlow = input.int(20, "慢均線", minval=2, group=grpMTF)
+mtfTf1  = input.timeframe("60",  "週期1", group=grpMTF)
+mtfTf2  = input.timeframe("240", "週期2", group=grpMTF)
+mtfTf3  = input.timeframe("D",   "週期3", group=grpMTF)
+
+// ===== 面板位置(三個表各自選角落,免疊)=====
+grpPos   = "面板位置"
+posOpts  = array.from("左上", "左中", "左下", "右上", "右中", "右下")
+posPanel = input.string("右下", "判讀面板位置",  options=["左上","左中","左下","右上","右中","右下"], group=grpPos)
+posVP    = input.string("右上", "量價判讀表位置", options=["左上","左中","左下","右上","右中","右下"], group=grpPos)
+posMTF   = input.string("右中", "多時框表位置",  options=["左上","左中","左下","右上","右中","右下"], group=grpPos)
+
 // ===== 錨點 + Fib 價位(每根算,訊號要用)=====
 hiP = manHi > 0 ? manHi : na
 loP = manLo > 0 ? manLo : na
@@ -41,6 +84,96 @@ f1    = loP
 
 ma5  = ta.sma(close, 5)
 ma20 = ta.sma(close, 20)
+
+// ===== 量價分布工具 =====
+// 對回看窗做成交量分布分桶,回 [hh, ll, 各桶量陣列]
+f_binvol(simple int len, simple int bins) =>
+    hh = ta.highest(high, len)
+    ll = ta.lowest(low,  len)
+    vol = array.new_float(bins, 0.0)
+    if hh > ll
+        step = (hh - ll) / bins
+        for i = 0 to len - 1
+            bl = math.max(0, math.min(bins - 1, int((low[i]  - ll) / step)))
+            bh = math.max(0, math.min(bins - 1, int((high[i] - ll) / step)))
+            per = nz(volume[i]) / (bh - bl + 1)
+            for j = bl to bh
+                array.set(vol, j, array.get(vol, j) + per)
+    [hh, ll, vol]
+
+// VP 全域(最後一根算好,供查價/判讀)
+var float[] gVol  = na
+var float   gMax  = na
+var float   gLL   = na
+var float   gStep = na
+
+// 查任一價位的量能%（相對最大量 POC）
+f_vp(float p) =>
+    float outv = na
+    if not (na(p) or na(gMax) or gMax <= 0 or na(gStep) or gStep <= 0 or na(gVol))
+        j = math.max(0, math.min(vpBins - 1, int((p - gLL) / gStep)))
+        outv := array.get(gVol, j) / gMax * 100
+    outv
+
+// 量能% → 判讀字
+f_tag(float vpct) =>
+    na(vpct) ? "?" : vpct >= hvnThr * 100 ? "真撐(高量)" : vpct < lvnThr * 100 ? "真空!假位" : "中量"
+
+// 表格儲存格文字:價位 + 量能% + 判讀（0 視為未填）
+f_cell(float p) =>
+    v = f_vp(p)
+    p > 0 ? str.format("{0}: {1}% {2}", str.tostring(p, format.mintick), na(v) ? "—" : str.tostring(v, "#"), f_tag(v)) : "—"
+
+// 表格儲存格顏色:綠=真撐 紫=真空
+f_col(float p) =>
+    v = f_vp(p)
+    na(v) or p <= 0 ? color.white : v >= hvnThr * 100 ? color.lime : v < lvnThr * 100 ? color.fuchsia : color.silver
+
+// ===== 自動撐壓工具 =====
+// 某價位附近是否已有區(相近合併用)
+f_near(box[] id, float lvl, float tol) =>
+    bool n = false
+    if array.size(id) > 0
+        for b in id
+            float mid = (box.get_top(b) + box.get_bottom(b)) / 2.0
+            if math.abs(lvl - mid) <= tol
+                n := true
+    n
+
+// 加區,超過上限刪最舊
+f_pushBox(box[] id, box nb, int maxc) =>
+    array.push(id, nb)
+    if array.size(id) > maxc
+        box.delete(array.shift(id))
+
+// 收盤破區→刪(above=true 壓力被收破;false 支撐被收破)
+f_delBroken(box[] id, bool above) =>
+    int i = array.size(id) - 1
+    while i >= 0
+        box b = array.get(id, i)
+        bool broken = above ? close > box.get_top(b) : close < box.get_bottom(b)
+        if broken
+            box.delete(b)
+            array.remove(id, i)
+        i -= 1
+
+// ===== 多時框方向(快慢均線排列)=====
+f_dir() =>
+    float fa = ta.sma(close, mtfFast)
+    float sl = ta.sma(close, mtfSlow)
+    int d = close > sl and fa > sl ? 1 : close < sl and fa < sl ? -1 : 0
+    d
+f_dtxt(int d) => d == 1 ? "多" : d == -1 ? "空" : "中"
+f_dcol(int d) => d == 1 ? color.green : d == -1 ? color.red : color.gray
+
+// 角落字串 → table position
+f_pos(string s) =>
+    s == "左上" ? position.top_left : s == "左中" ? position.middle_left : s == "左下" ? position.bottom_left : s == "右上" ? position.top_right : s == "右中" ? position.middle_right : position.bottom_right
+
+// 多時框方向(各週期快慢均線排列;函式宣告後才能呼叫)
+int mtfD1 = request.security(syminfo.tickerid, mtfTf1, f_dir())
+int mtfD2 = request.security(syminfo.tickerid, mtfTf2, f_dir())
+int mtfD3 = request.security(syminfo.tickerid, mtfTf3, f_dir())
 
 // ===== 歷史最高(全段 running max)=====
 var float ath  = na
@@ -61,9 +194,142 @@ brk    = showSignals and ok and ta.crossover(close, f0)
 plotshape(inGold, "回測黃金區", style=shape.triangleup, location=location.belowbar, color=color.green, size=size.small, text="黃金區", textcolor=color.green)
 plotshape(brk,    "突破高點",   style=shape.labelup,    location=location.belowbar, color=color.lime,  size=size.small, text="突破",   textcolor=color.white)
 
-// ===== Fib 線 + 色塊 + 水平線(最後一根重畫)=====
+// ===== 自動撐壓(pivot+ATR 區厚;相近合併、收破自動刪)=====
+var box[] resZones = array.new_box()
+var box[] supZones = array.new_box()
+float autoAtr = ta.atr(autoAtrLen)
+float resPiv  = ta.pivothigh(high, autoPivLen, autoPivLen)
+float supPiv  = ta.pivotlow(low,  autoPivLen, autoPivLen)
+if showAutoSR and not na(resPiv)
+    float pa = nz(autoAtr[autoPivLen], syminfo.mintick * 10)
+    float hw = math.max(pa * autoZoneAtr, syminfo.mintick * 2)
+    if not f_near(resZones, resPiv, hw * 1.25)
+        f_pushBox(resZones, box.new(bar_index - autoPivLen, resPiv + hw, bar_index, resPiv - hw, xloc=xloc.bar_index, extend=extend.right, border_color=color.new(color.red, 35), bgcolor=color.new(color.red, 88), text="自動壓力", text_color=color.white, text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top), autoMaxSR)
+if showAutoSR and not na(supPiv)
+    float pa = nz(autoAtr[autoPivLen], syminfo.mintick * 10)
+    float hw = math.max(pa * autoZoneAtr, syminfo.mintick * 2)
+    if not f_near(supZones, supPiv, hw * 1.25)
+        f_pushBox(supZones, box.new(bar_index - autoPivLen, supPiv + hw, bar_index, supPiv - hw, xloc=xloc.bar_index, extend=extend.right, border_color=color.new(color.green, 35), bgcolor=color.new(color.green, 88), text="自動支撐", text_color=color.white, text_size=size.tiny, text_halign=text.align_left, text_valign=text.align_top), autoMaxSR)
+// 收盤有效突破→刪失效區
+f_delBroken(resZones, true)
+f_delBroken(supZones, false)
+
+// ===== Fib 比例 + VP 分布(早宣告;自動水平去重 & ta.* 需每根算)=====
 levels = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0, 1.618)
 cols   = array.from(color.gray, color.red, color.orange, color.green, color.teal, color.aqua, color.gray, color.purple)
+[vpHH, vpLL, vpVV] = f_binvol(vpLen, vpBins)
+
+// ===== 收集歷史轉折點(每根;供自動水平線群聚)=====
+var float[] pivAll = array.new_float()
+hlPH = ta.pivothigh(high, hlPivLen, hlPivLen)
+hlPL = ta.pivotlow(low,  hlPivLen, hlPivLen)
+if not na(hlPH)
+    array.push(pivAll, hlPH)
+    if array.size(pivAll) > 600
+        array.shift(pivAll)
+if not na(hlPL)
+    array.push(pivAll, hlPL)
+    if array.size(pivAll) > 600
+        array.shift(pivAll)
+
+// ===== VP 早算 + 自動關鍵價(畫線/判讀表前先備好)=====
+// autoLv = 歷史轉折群聚的價位(被測過幾次),由強到弱。水平線沒手填就用它補。
+var float[] autoLv  = array.new_float()
+var float[] autoCnt = array.new_float()
+float eh1 = h1
+float eh2 = h2
+float eh3 = h3
+float eh4 = h4
+int eh1c = 0
+int eh2c = 0
+int eh3c = 0
+int eh4c = 0
+if barstate.islast
+    // VP 全域(供真撐/真空判讀表;用早算好的分布,不在此重算)
+    hhE = vpHH
+    llE = vpLL
+    vvE = vpVV
+    gVol  := vvE
+    gLL   := llE
+    gStep := (hhE - llE) / vpBins
+    gMax  := array.max(vvE)
+
+    // 歷史轉折群聚:相近價位併一群,成員數=被測次數
+    array.clear(autoLv)
+    array.clear(autoCnt)
+    arr = array.copy(pivAll)
+    if array.size(arr) > 0
+        array.sort(arr, order.ascending)
+        cC = array.new_float()   // 群中心價
+        cN = array.new_float()   // 被測次數
+        np = array.size(arr)
+        ii = 0
+        while ii < np
+            base = array.get(arr, ii)
+            sumv = 0.0
+            cnt  = 0
+            jj   = ii
+            // and 不短路,array.get 要在 jj<np 確定後才取→用 break
+            while jj < np
+                v = array.get(arr, jj)
+                if base > 0 and (v - base) / base * 100 <= hlTolPct
+                    sumv := sumv + v
+                    cnt  := cnt + 1
+                    jj   := jj + 1
+                else
+                    break
+            if cnt > 0
+                array.push(cC, sumv / cnt)
+                array.push(cN, cnt)
+            ii := math.max(jj, ii + 1)
+        // 篩選:現價±範圍內、被測夠次、離 Fib 線夠遠
+        fC = array.new_float()
+        fN = array.new_float()
+        for c = 0 to array.size(cC) - 1
+            cp = array.get(cC, c)
+            ct = array.get(cN, c)
+            nearOK  = math.abs(cp - close) / close * 100 <= hlNearPct
+            touchOK = ct >= hlMinTouch
+            fibFar  = true
+            if ok
+                for li = 0 to array.size(levels) - 1
+                    fp = hiP - rng * array.get(levels, li)
+                    if fp > 0 and math.abs(cp - fp) / cp * 100 < 1.2
+                        fibFar := false
+            if nearOK and touchOK and fibFar
+                array.push(fC, cp)
+                array.push(fN, ct)
+        // 由被測次數多→少,取前 4
+        if array.size(fC) > 0
+            nsel = math.min(4, array.size(fC))
+            for s = 1 to nsel
+                bi = -1
+                bv = -1.0
+                for t = 0 to array.size(fN) - 1
+                    if array.get(fN, t) > bv
+                        bv := array.get(fN, t)
+                        bi := t
+                if bi >= 0
+                    array.push(autoLv,  array.get(fC, bi))
+                    array.push(autoCnt, array.get(fN, bi))
+                    array.set(fN, bi, -1.0)
+
+    // 水平線沒手填→自動帶入歷史價(手填優先)
+    if autoFill
+        if h1 <= 0 and array.size(autoLv) >= 1
+            eh1  := array.get(autoLv, 0)
+            eh1c := int(array.get(autoCnt, 0))
+        if h2 <= 0 and array.size(autoLv) >= 2
+            eh2  := array.get(autoLv, 1)
+            eh2c := int(array.get(autoCnt, 1))
+        if h3 <= 0 and array.size(autoLv) >= 3
+            eh3  := array.get(autoLv, 2)
+            eh3c := int(array.get(autoCnt, 2))
+        if h4 <= 0 and array.size(autoLv) >= 4
+            eh4  := array.get(autoLv, 3)
+            eh4c := int(array.get(autoCnt, 3))
+
+// ===== Fib 線 + 色塊 + 水平線(最後一根重畫)=====
 var line[]  fLines = array.new_line()
 var label[] fLabs  = array.new_label()
 var box[]   fBoxes = array.new_box()
@@ -84,6 +350,7 @@ if barstate.islast and ok
 
     xL = math.max(0, bar_index - manBack)
     xR = bar_index + rightExt
+    xLab = bar_index + rightExt + hlLabGap
     px = close
 
     if showFib
@@ -92,32 +359,41 @@ if barstate.islast and ok
             p = hiP - rng * r
             c = array.get(cols, i)
             sr = p > px ? "壓力" : "支撐"
-            array.push(fLines, line.new(xL, p, xR, p, color=c, width=1))
+            array.push(fLines, line.new(xL, p, xR, p, color=c, width=1, extend=extend.both))
             array.push(fLabs,  label.new(xR, p, str.format("{0} Fib {1} ({2})", sr, r, str.tostring(p, format.mintick)), style=label.style_label_left, color=color.new(c, 80), textcolor=c, size=size.small))
 
     if showZones
         for i = 0 to array.size(levels) - 2
             p1 = hiP - rng * array.get(levels, i)
             p2 = hiP - rng * array.get(levels, i + 1)
-            array.push(fBoxes, box.new(xL, math.max(p1, p2), xR, math.min(p1, p2), border_color=color.new(color.gray, 100), bgcolor=color.new(array.get(cols, i + 1), 90)))
+            array.push(fBoxes, box.new(xL, math.max(p1, p2), xR, math.min(p1, p2), border_color=color.new(color.gray, 100), bgcolor=color.new(array.get(cols, i + 1), 90), extend=extend.right))
 
-    // 關鍵水平線;壓力紅/支撐綠
-    if h1 > 0
-        c1 = h1 > px ? color.red : color.green
-        array.push(fLines, line.new(xL, h1, xR, h1, color=c1, width=2))
-        array.push(fLabs,  label.new(xR, h1, str.format("{0} {1}", h1 > px ? "壓力" : "支撐", str.tostring(h1)), style=label.style_label_left, color=color.new(c1, 50), textcolor=color.white, size=size.small))
-    if h2 > 0
-        c2 = h2 > px ? color.red : color.green
-        array.push(fLines, line.new(xL, h2, xR, h2, color=c2, width=2))
-        array.push(fLabs,  label.new(xR, h2, str.format("{0} {1}", h2 > px ? "壓力" : "支撐", str.tostring(h2)), style=label.style_label_left, color=color.new(c2, 50), textcolor=color.white, size=size.small))
-    if h3 > 0
-        c3 = h3 > px ? color.red : color.green
-        array.push(fLines, line.new(xL, h3, xR, h3, color=c3, width=2))
-        array.push(fLabs,  label.new(xR, h3, str.format("{0} {1}", h3 > px ? "壓力" : "支撐", str.tostring(h3)), style=label.style_label_left, color=color.new(c3, 50), textcolor=color.white, size=size.small))
-    if h4 > 0
-        c4 = h4 > px ? color.red : color.green
-        array.push(fLines, line.new(xL, h4, xR, h4, color=c4, width=2))
-        array.push(fLabs,  label.new(xR, h4, str.format("{0} {1}", h4 > px ? "壓力" : "支撐", str.tostring(h4)), style=label.style_label_left, color=color.new(c4, 50), textcolor=color.white, size=size.small))
+    // 關鍵水平線;壓力紅/支撐綠。手填=實線,自動帶入=虛線+標「自動」
+    // 手填牌留 xR(跟Fib同欄);自動牌移到 xLab(右外側獨立一欄)+可開關
+    if eh1 > 0
+        c1 = eh1 > px ? color.red : color.green
+        a1 = h1 > 0 ? "" : str.format(" 測{0}次", eh1c)
+        array.push(fLines, line.new(xL, eh1, xR, eh1, color=c1, width=2, style=h1 > 0 ? line.style_solid : line.style_dashed, extend=extend.both))
+        if h1 > 0 or showHLLab
+            array.push(fLabs, label.new(h1 > 0 ? xR : xLab, eh1, str.format("{0}{1} {2}", eh1 > px ? "壓力" : "支撐", a1, str.tostring(eh1, format.mintick)), style=label.style_label_left, color=color.new(c1, 50), textcolor=color.white, size=size.small))
+    if eh2 > 0
+        c2 = eh2 > px ? color.red : color.green
+        a2 = h2 > 0 ? "" : str.format(" 測{0}次", eh2c)
+        array.push(fLines, line.new(xL, eh2, xR, eh2, color=c2, width=2, style=h2 > 0 ? line.style_solid : line.style_dashed, extend=extend.both))
+        if h2 > 0 or showHLLab
+            array.push(fLabs, label.new(h2 > 0 ? xR : xLab, eh2, str.format("{0}{1} {2}", eh2 > px ? "壓力" : "支撐", a2, str.tostring(eh2, format.mintick)), style=label.style_label_left, color=color.new(c2, 50), textcolor=color.white, size=size.small))
+    if eh3 > 0
+        c3 = eh3 > px ? color.red : color.green
+        a3 = h3 > 0 ? "" : str.format(" 測{0}次", eh3c)
+        array.push(fLines, line.new(xL, eh3, xR, eh3, color=c3, width=2, style=h3 > 0 ? line.style_solid : line.style_dashed, extend=extend.both))
+        if h3 > 0 or showHLLab
+            array.push(fLabs, label.new(h3 > 0 ? xR : xLab, eh3, str.format("{0}{1} {2}", eh3 > px ? "壓力" : "支撐", a3, str.tostring(eh3, format.mintick)), style=label.style_label_left, color=color.new(c3, 50), textcolor=color.white, size=size.small))
+    if eh4 > 0
+        c4 = eh4 > px ? color.red : color.green
+        a4 = h4 > 0 ? "" : str.format(" 測{0}次", eh4c)
+        array.push(fLines, line.new(xL, eh4, xR, eh4, color=c4, width=2, style=h4 > 0 ? line.style_solid : line.style_dashed, extend=extend.both))
+        if h4 > 0 or showHLLab
+            array.push(fLabs, label.new(h4 > 0 ? xR : xLab, eh4, str.format("{0}{1} {2}", eh4 > px ? "壓力" : "支撐", a4, str.tostring(eh4, format.mintick)), style=label.style_label_left, color=color.new(c4, 50), textcolor=color.white, size=size.small))
 
 // ===== 歷史最高線(最後一根重畫)=====
 var line  athLine = na
@@ -131,7 +407,7 @@ if barstate.islast
         athLab  := label.new(bar_index + rightExt, ath, str.format("歷史高 {0} ({1}%)", str.tostring(ath, format.mintick), str.tostring(dist, "#.#")), style=label.style_label_left, color=color.new(color.fuchsia, 40), textcolor=color.white, size=size.small)
 
 // ===== 位置判讀面板(右上表格)=====
-var table panel = table.new(position.bottom_right, 2, 6, border_width=1, frame_color=color.gray, frame_width=1)
+var table panel = table.new(f_pos(posPanel), 2, 6, border_width=1, frame_color=color.gray, frame_width=1)
 
 if barstate.islast
     if showPanel and ok
@@ -166,6 +442,99 @@ if barstate.islast
     else
         table.clear(panel, 0, 0, 1, 5)
         table.cell(panel, 0, 0, "請填手動高/低點", text_color=color.yellow, bgcolor=color.new(color.black, 20), text_size=size.normal)
+
+// ===== 量價判讀:高量牆(綠)/真空帶(紫) + 判讀表 =====
+var box[]   hvnBox = array.new_box()
+var box[]   lvnBox = array.new_box()
+var table   vpTbl  = table.new(f_pos(posVP), 2, 6, border_width=1, frame_color=color.gray, frame_width=1)
+
+if barstate.islast and showVP
+    hh = vpHH
+    ll = vpLL
+    vv = vpVV
+    gVol  := vv
+    gLL   := ll
+    gStep := (hh - ll) / vpBins
+    gMax  := array.max(vv)
+    pxn = close
+    xLn = math.max(0, bar_index - vpLen)
+    xRn = bar_index + rightExt
+
+    // 清舊框
+    if array.size(hvnBox) > 0
+        for i = 0 to array.size(hvnBox) - 1
+            box.delete(array.get(hvnBox, i))
+    if array.size(lvnBox) > 0
+        for i = 0 to array.size(lvnBox) - 1
+            box.delete(array.get(lvnBox, i))
+    array.clear(hvnBox)
+    array.clear(lvnBox)
+
+    // 連續桶併帶,只畫現價±vpNear% 內
+    if showHVN and hh > ll and gMax > 0
+        z = -1
+        for j = 0 to vpBins - 1
+            isH = array.get(vv, j) >= gMax * hvnThr
+            if isH and z == -1
+                z := j
+            if (not isH or j == vpBins - 1) and z != -1
+                jh = isH ? j : j - 1
+                pT = ll + (jh + 1) * gStep
+                pB = ll + z * gStep
+                if math.abs((pT + pB) / 2 - pxn) / pxn * 100 <= vpNear
+                    array.push(hvnBox, box.new(xLn, pT, xRn, pB, border_color=color.new(color.green, 50), bgcolor=color.new(color.green, 80)))
+                z := -1
+        z2 = -1
+        for j = 0 to vpBins - 1
+            isL = array.get(vv, j) < gMax * lvnThr
+            if isL and z2 == -1
+                z2 := j
+            if (not isL or j == vpBins - 1) and z2 != -1
+                jh2 = isL ? j : j - 1
+                pT2 = ll + (jh2 + 1) * gStep
+                pB2 = ll + z2 * gStep
+                if math.abs((pT2 + pB2) / 2 - pxn) / pxn * 100 <= vpNear
+                    array.push(lvnBox, box.new(xLn, pT2, xRn, pB2, border_color=color.new(color.purple, 60), bgcolor=color.new(color.purple, 85)))
+                z2 := -1
+
+    // 判讀表(現價 + 水平線1-4 各標真撐/真空)
+    table.clear(vpTbl, 0, 0, 1, 5)
+    table.cell(vpTbl, 0, 0, "量價判讀", text_color=color.white, bgcolor=color.new(color.blue, 20), text_size=size.normal)
+    table.cell(vpTbl, 1, 0, "綠=真撐 紫=真空", text_color=color.white, bgcolor=color.new(color.blue, 20), text_size=size.small)
+    table.cell(vpTbl, 0, 1, "現價", text_color=color.silver, text_size=size.small)
+    table.cell(vpTbl, 1, 1, f_cell(close), text_color=f_col(close), text_size=size.small)
+    table.cell(vpTbl, 0, 2, h1 > 0 ? "水平1" : "水平1自", text_color=color.silver, text_size=size.small)
+    table.cell(vpTbl, 1, 2, f_cell(eh1), text_color=f_col(eh1), text_size=size.small)
+    table.cell(vpTbl, 0, 3, h2 > 0 ? "水平2" : "水平2自", text_color=color.silver, text_size=size.small)
+    table.cell(vpTbl, 1, 3, f_cell(eh2), text_color=f_col(eh2), text_size=size.small)
+    table.cell(vpTbl, 0, 4, h3 > 0 ? "水平3" : "水平3自", text_color=color.silver, text_size=size.small)
+    table.cell(vpTbl, 1, 4, f_cell(eh3), text_color=f_col(eh3), text_size=size.small)
+    table.cell(vpTbl, 0, 5, h4 > 0 ? "水平4" : "水平4自", text_color=color.silver, text_size=size.small)
+    table.cell(vpTbl, 1, 5, f_cell(eh4), text_color=f_col(eh4), text_size=size.small)
+
+// ===== 多時框方向表(中右)=====
+var table mtfTbl = table.new(f_pos(posMTF), 2, 4, border_width=1, frame_color=color.gray, frame_width=1)
+if barstate.islast
+    if showMTF
+        table.clear(mtfTbl, 0, 0, 1, 3)
+        table.cell(mtfTbl, 0, 0, "週期", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+        table.cell(mtfTbl, 1, 0, "方向", text_color=color.white, bgcolor=color.new(color.black, 20), text_size=size.small)
+        table.cell(mtfTbl, 0, 1, mtfTf1, text_color=color.silver, text_size=size.small)
+        table.cell(mtfTbl, 1, 1, f_dtxt(mtfD1), text_color=color.white, bgcolor=color.new(f_dcol(mtfD1), 30), text_size=size.small)
+        table.cell(mtfTbl, 0, 2, mtfTf2, text_color=color.silver, text_size=size.small)
+        table.cell(mtfTbl, 1, 2, f_dtxt(mtfD2), text_color=color.white, bgcolor=color.new(f_dcol(mtfD2), 30), text_size=size.small)
+        table.cell(mtfTbl, 0, 3, mtfTf3, text_color=color.silver, text_size=size.small)
+        table.cell(mtfTbl, 1, 3, f_dtxt(mtfD3), text_color=color.white, bgcolor=color.new(f_dcol(mtfD3), 30), text_size=size.small)
+    else
+        table.clear(mtfTbl, 0, 0, 1, 3)
+
+// ===== 警報 =====
+alertcondition(brk,                          "突破手動高點",   "{{ticker}} {{interval}}:突破 Fib 0 手動高點")
+alertcondition(inGold,                       "回測黃金區",     "{{ticker}} {{interval}}:回測 0.5~0.618 黃金區+紅K轉綠")
+alertcondition(ta.crossover(close, ma20),    "收盤站上 MA20", "{{ticker}} {{interval}}:收盤站上 MA20")
+alertcondition(ta.crossunder(close, ma20),   "收盤跌破 MA20", "{{ticker}} {{interval}}:收盤跌破 MA20")
+alertcondition(ok and ta.crossover(close, f618),  "站回 0.618", "{{ticker}} {{interval}}:站回 0.618 黃金線上")
+alertcondition(ok and ta.crossunder(close, f618), "跌破 0.618", "{{ticker}} {{interval}}:跌破 0.618 黃金線")
 
 // ===== 均線 =====
 plot(showMA5  ? ma5  : na, "MA5",  color=color.orange, linewidth=1)
