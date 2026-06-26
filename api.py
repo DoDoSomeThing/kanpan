@@ -32,6 +32,7 @@ from position import (load_positions, position_risk, open_position,
                       _load_bench)
 import portfolio as PF
 import behavior as BH
+import review as RV
 from datetime import datetime
 
 CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
@@ -244,6 +245,7 @@ def portfolio_ep():
         correlation=matrix,
         high_corr=PF.high_corr_pairs(matrix),
         exposure=PF.exposure(holdings, cash=cash),
+        review=RV.review(d["closed"]),   # 交易檢討：樣本外/各策略/賭博特徵
     )
 
 

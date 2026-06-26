@@ -189,6 +189,29 @@ def _main():
         if hi:
             print("  ⚠ 高相關（>=0.7，假分散）: "
                   + "、".join(f"{m['a']}/{m['b']}={m['corr']}" for m in hi))
+
+    # 交易檢討（抽取自 anti-gambling-trader：樣本外 / 各策略 / 賭博特徵）
+    import review as RV
+    rv = RV.review(d["closed"])
+    print("-" * 40)
+    print("交易檢討（誠實體檢，吃平倉紀錄）")
+    oos = rv["out_of_sample"]
+    if oos["verdict"] == "樣本不足":
+        print(f"  樣本外驗證: 樣本不足（平倉 {oos['n']} 筆，<6 不檢）")
+    else:
+        print(f"  樣本外驗證: 前段 {oos['in_n']}筆 {oos['in_exp']:+}% → "
+              f"後段 {oos['out_n']}筆 {oos['out_exp']:+}% → {oos['verdict']}")
+    if rv["per_tag"]:
+        print("  各策略體檢（出場原因，最差→最好）:")
+        for g in rv["per_tag"]:
+            print(f"    {g['verdict']} {g['tag']}: {g['n']}筆 期望值 "
+                  f"{g['expectancy']:+}% 勝率 {g['win_rate']}%")
+    if rv["gambling_flags"]:
+        print("  ⚠ 賭博特徵:")
+        for fl in rv["gambling_flags"]:
+            print(f"    • {fl['msg']}")
+    elif len([r for r in d["closed"] if r.get('return_pct') is not None]) >= 3:
+        print("  ✅ 無明顯賭博特徵")
     print("=" * 40)
 
 
