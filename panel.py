@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer, wilson_ci
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer, wilson_ci, trend_exit
 from inst import get_inst, fmt_row, consensus
 from playbook import detect_playbook, playbook_view, load_stats as load_pb_stats
 from position import load_positions, position_risk, attach_alpha, _load_bench
@@ -169,6 +169,12 @@ def render(sid, p, stats):
         if pos.get("bench_pct") is not None:
             out.append(f"  同期 {pos['bench_sid']} {pos['bench_pct']:+}%｜超額 α {pos['alpha_pct']:+}%")
         out.append(f"  生效出場 {pos['effective_exit']}（{pos['effective_by']}）｜距觸發 {pos['dist_pct']:+}%　{pos['light']} {pos['state']}")
+        tr = pos.get("trend")
+        if tr:
+            if tr["broken"]:
+                out.append(f"  🔻 趨勢出場: MA60 {tr['ma60']} < MA120 {tr['ma120']}（轉空，跨7市場驗證:此狀態續抱回撤大→出場/減碼）")
+            else:
+                out.append(f"  🟢 趨勢續多: MA60 {tr['ma60']} > MA120 {tr['ma120']}（結構仍多，可續抱）")
     bw = p.get("behavior")
     if bw:
         out += ["", "-" * 30, "⚠ 行為守門:"]
@@ -202,6 +208,11 @@ def main():
     sid = a.sid.upper()
     risk = position_risk(sid, bars[-1]["close"], today_high=bars[-1].get("high"))
     p["position"] = attach_alpha(risk, _load_bench(cache)) if risk else None
+    if p["position"]:
+        try:
+            p["position"]["trend"] = trend_exit(bars)   # 個股 V3 趨勢出場旗標
+        except Exception:
+            p["position"]["trend"] = None
     # P3 行為守門：追高/凹單(單股) + 頻率(全域跨檔，餵全部 closed)
     pos_d = load_positions()
     p["behavior"] = BH.behavior_checks(

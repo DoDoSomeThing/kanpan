@@ -184,6 +184,19 @@ def sma(vals: list, n: int):
     return out
 
 
+def trend_exit(bars):
+    """個股 V3 趨勢出場：MA60 < MA120 = 趨勢轉空，建議出場／減碼。
+    跨 7 市場 30+ 年驗證(crossasset_v3)：此狀態續抱回撤明顯較大；
+    趨勢出場(MA60<MA120) 風險調整 >> 固定時間出場。純風控,非預測。
+    回 {ma60, ma120, broken} 或 None(資料不足 120 根)。"""
+    closes = [b["close"] for b in bars if b.get("close")]
+    if len(closes) < 120:
+        return None
+    ma60 = sum(closes[-60:]) / 60
+    ma120 = sum(closes[-120:]) / 120
+    return {"ma60": round(ma60, 2), "ma120": round(ma120, 2), "broken": ma60 < ma120}
+
+
 def rsi14(closes: list, n: int = 14):
     """Wilder RSI 序列；前 n 根為 None。"""
     out = [None] * len(closes)
