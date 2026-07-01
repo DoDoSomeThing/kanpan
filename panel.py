@@ -59,6 +59,14 @@ def render(sid, p, stats):
     out += [f"〔{v.get('frame', '現況研判·非預測')}〕",
             f"{v['light']} {v['tone']}　{v['conf']}",
             f"操作研判: {v['action']}", ""]
+    # 個股 V3 趨勢燈（always-on，唯一跨市場驗證的規則；不用建倉就看得到）
+    tr = p.get("trend")
+    if tr and tr["broken"]:
+        out += [f"🚦 V3 趨勢燈: 🔴 紅燈　MA60 {tr['ma60']} < MA120 {tr['ma120']}（趨勢轉空 → 守/減碼、別接刀）", ""]
+    elif tr:
+        out += [f"🚦 V3 趨勢燈: 🟢 綠燈　MA60 {tr['ma60']} > MA120 {tr['ma120']}（趨勢偏多 → 可續抱）", ""]
+    else:
+        out += ["🚦 V3 趨勢燈: ⚪ 資料不足（需 120 日）", ""]
     # L1 狀態層（純重排現有資料，一眼看現況）
     sl = state_layer(p)
     ck = "  ".join(f"{'☑' if x['ok'] else '☒'} {x['k']}" for x in sl["checklist"])
@@ -169,12 +177,7 @@ def render(sid, p, stats):
         if pos.get("bench_pct") is not None:
             out.append(f"  同期 {pos['bench_sid']} {pos['bench_pct']:+}%｜超額 α {pos['alpha_pct']:+}%")
         out.append(f"  生效出場 {pos['effective_exit']}（{pos['effective_by']}）｜距觸發 {pos['dist_pct']:+}%　{pos['light']} {pos['state']}")
-        tr = pos.get("trend")
-        if tr:
-            if tr["broken"]:
-                out.append(f"  🔻 趨勢出場: MA60 {tr['ma60']} < MA120 {tr['ma120']}（轉空，跨7市場驗證:此狀態續抱回撤大→出場/減碼）")
-            else:
-                out.append(f"  🟢 趨勢續多: MA60 {tr['ma60']} > MA120 {tr['ma120']}（結構仍多，可續抱）")
+        out.append("  （趨勢燈見上方；持倉卡=手動建倉才顯示的細部風控,選配）")
     bw = p.get("behavior")
     if bw:
         out += ["", "-" * 30, "⚠ 行為守門:"]
@@ -208,11 +211,10 @@ def main():
     sid = a.sid.upper()
     risk = position_risk(sid, bars[-1]["close"], today_high=bars[-1].get("high"))
     p["position"] = attach_alpha(risk, _load_bench(cache)) if risk else None
-    if p["position"]:
-        try:
-            p["position"]["trend"] = trend_exit(bars)   # 個股 V3 趨勢出場旗標
-        except Exception:
-            p["position"]["trend"] = None
+    try:
+        p["trend"] = trend_exit(bars)   # 個股 V3 趨勢燈（always-on，不必建倉）
+    except Exception:
+        p["trend"] = None
     # P3 行為守門：追高/凹單(單股) + 頻率(全域跨檔，餵全部 closed)
     pos_d = load_positions()
     p["behavior"] = BH.behavior_checks(
