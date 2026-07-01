@@ -15,7 +15,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer, wilson_ci, trend_exit
+from core import load_bars, compute_panel, comment, verdict, data_freshness, consistency_check, state_layer, wilson_ci
 from inst import get_inst, fmt_row, consensus
 from playbook import detect_playbook, playbook_view, load_stats as load_pb_stats
 from position import load_positions, position_risk, attach_alpha, _load_bench
@@ -62,9 +62,9 @@ def render(sid, p, stats):
     # 個股 V3 趨勢燈（always-on，唯一跨市場驗證的規則；不用建倉就看得到）
     tr = p.get("trend")
     if tr and tr["broken"]:
-        out += [f"🚦 V3 趨勢燈: 🔴 紅燈　MA60 {tr['ma60']} < MA120 {tr['ma120']}（趨勢轉空 → 守/減碼、別接刀）", ""]
+        out += [f"🚦 V3 趨勢燈: 🔴 紅燈　MA60 {tr['ma60']:.2f} < MA120 {tr['ma120']:.2f}（趨勢轉空 → 守/減碼、別接刀）", ""]
     elif tr:
-        out += [f"🚦 V3 趨勢燈: 🟢 綠燈　MA60 {tr['ma60']} > MA120 {tr['ma120']}（趨勢偏多 → 可續抱）", ""]
+        out += [f"🚦 V3 趨勢燈: 🟢 綠燈　MA60 {tr['ma60']:.2f} > MA120 {tr['ma120']:.2f}（趨勢偏多 → 可續抱）", ""]
     else:
         out += ["🚦 V3 趨勢燈: ⚪ 資料不足（需 120 日）", ""]
     # L1 狀態層（純重排現有資料，一眼看現況）
@@ -211,10 +211,6 @@ def main():
     sid = a.sid.upper()
     risk = position_risk(sid, bars[-1]["close"], today_high=bars[-1].get("high"))
     p["position"] = attach_alpha(risk, _load_bench(cache)) if risk else None
-    try:
-        p["trend"] = trend_exit(bars)   # 個股 V3 趨勢燈（always-on，不必建倉）
-    except Exception:
-        p["trend"] = None
     # P3 行為守門：追高/凹單(單股) + 頻率(全域跨檔，餵全部 closed)
     pos_d = load_positions()
     p["behavior"] = BH.behavior_checks(

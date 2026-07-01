@@ -1,8 +1,10 @@
 {
   "manifest_version": 3,
   "name": "kanpan 看盤",
-  "version": "0.2",
+  "version": "0.3",
   "description": "TradingView / Yahoo 股市 開台股 → 右側 kanpan 面板（VP Score / 結構 / 歷史統計，非買賣建議）",
+  "host_permissions": ["http://127.0.0.1:8771/*", "http://localhost:8771/*"],
+  "background": { "service_worker": "background.js" },
   "content_scripts": [
     {
       "matches": ["https://tw.tradingview.com/*", "https://www.tradingview.com/*",

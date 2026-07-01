@@ -828,6 +828,9 @@ def compute_panel(bars: list, i: int = -1) -> dict:
         "freshness": fresh, "ref_date": ref_date,
         "vp_score": score,
     }
+    # 個股 V3 趨勢燈(MA60 vs MA120,唯一跨市場驗證的規則);panel/api/擴充共用
+    p["trend"] = ({"ma60": ma60, "ma120": ma120, "broken": ma60 < ma120}
+                  if (ma60 is not None and ma120 is not None) else None)
     p["evo"] = evolution(bars, idx, p)
     return p
 

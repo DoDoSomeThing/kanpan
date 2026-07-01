@@ -185,3 +185,8 @@
 #kp-panel .kp-pos .pa { margin-top: 6px; }
 #kp-panel .kp-pos .pa button { width: 100%; background: #7a3a3a; }
 #kp-panel .kp-pos .pa button:hover { background: #9a4a4a; }
+
+/* V3 趨勢燈（跨市場驗證：綠抱紅守） */
+#kp-panel .kp-v3 { margin: 6px 0; padding: 6px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; text-align: center; }
+#kp-panel .kp-v3.g { background: #14361f; color: #7ee29a; border: 1px solid #2e7d4a; }
+#kp-panel .kp-v3.r { background: #3a1414; color: #ff8a8a; border: 1px solid #9a3a3a; }

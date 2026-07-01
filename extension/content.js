@@ -141,13 +141,28 @@
     </div>`;
   }
 
-  async function posPost(body) {
-    const r = await fetch(POSAPI, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+  // 透過背景層打本機 api（繞過網頁對 loopback 的 PNA 封鎖）
+  function bgFetch(url) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "kp-fetch", url }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!resp || !resp.ok) return reject(new Error((resp && resp.error) || "bg fetch fail"));
+        resolve(resp.data);
+      });
     });
-    return r.json();
+  }
+  function bgPost(url, body) {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ type: "kp-post", url, body }, (resp) => {
+        if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+        if (!resp || !resp.ok) return reject(new Error((resp && resp.error) || "bg post fail"));
+        resolve(resp.data);
+      });
+    });
+  }
+
+  async function posPost(body) {
+    return bgPost(POSAPI, body);
   }
 
   function bindPos(p, sid) {
@@ -194,6 +209,13 @@
         <div class="vc">${v.conf}　|　分數 ${d.vp_score}/100　${d.structure}</div>
         <div class="va">📋 ${v.action}</div>
       </div>` : "";
+
+    // 個股 V3 趨勢燈（唯一跨市場驗證的規則；綠抱紅守，不必建倉）
+    const tr = d.trend;
+    const f2 = n => (typeof n === "number" ? n.toFixed(2) : n);
+    const v3Light = tr
+      ? `<div class="kp-v3 ${tr.broken ? "r" : "g"}">🚦 V3 趨勢燈　${tr.broken ? "🔴 紅燈" : "🟢 綠燈"}　MA60 ${f2(tr.ma60)} ${tr.broken ? "&lt;" : "&gt;"} MA120 ${f2(tr.ma120)}　${tr.broken ? "轉空→守/減碼" : "偏多→可續抱"}</div>`
+      : `<div class="kp-v3">🚦 V3 趨勢燈　⚪ 資料不足</div>`;
 
     // L1 狀態層（純重排現有資料：趨勢/籌碼/動能 + checklist）
     const sl = d.state_layer;
@@ -290,6 +312,7 @@
       ${behavior}
       ${freshWarn}
       ${verdict}
+      ${v3Light}
       ${stateCard}
       ${pbCard}
       ${ag}
@@ -320,7 +343,7 @@
   async function fetchAndRender(sid) {
     let d;
     try {
-      d = await (await fetch(`${API}?sid=${sid}`)).json();
+      d = await bgFetch(`${API}?sid=${sid}`);
     } catch (e) {
       render({ error: "連不上本機後端 (127.0.0.1:8771)" });
       return;

@@ -39,7 +39,16 @@ CACHE = os.path.join(HERE, "cache", "kline_cache.json.gz")
 STATS = os.path.join(HERE, "research", "score_stats.json")
 
 app = Flask(__name__)
-CORS(app)
+# allow_private_network=True → Chrome Private Network Access:公開站(Yahoo)連本機 127.0.0.1 放行
+try:
+    CORS(app, allow_private_network=True)
+except TypeError:
+    # 舊版 flask_cors 無此參數 → 後備:自己補 header(需確認沒重複 false)
+    CORS(app)
+    @app.after_request
+    def _pna(resp):
+        resp.headers["Access-Control-Allow-Private-Network"] = "true"
+        return resp
 
 _stats = json.load(open(STATS, encoding="utf-8")) if os.path.exists(STATS) else None
 
