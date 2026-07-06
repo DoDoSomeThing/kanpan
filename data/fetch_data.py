@@ -27,7 +27,6 @@ def _find_token() -> str:
         return k
     cands = [os.getenv("STOCK_SECRETS_DIR"),
              str(Path.home() / "Desktop" / "Justin" / "stock-secrets"),
-             "/Users/justin/Desktop/Justin/stock-secrets",
              str(Path.home() / "stock-secrets")]
     for d in cands:
         if not d:
