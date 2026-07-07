@@ -347,7 +347,12 @@ document.getElementById("go").onclick = go;
 document.getElementById("sid").addEventListener("keydown", e => {
   if (e.key === "Enter") go();
 });
-go();   // 開頁先載預設 2330
+// ?sid=2330 直開指定個股（tw-market-map 等外部連結用），沒帶參數照預設
+const _q = new URLSearchParams(location.search).get("sid");
+if (_q && /^[0-9]{4,6}[A-Z]?$/i.test(_q.trim())) {
+  document.getElementById("sid").value = _q.trim().toUpperCase();
+}
+go();   // 開頁載入（預設 2330 或 ?sid= 指定）
 </script>
 </body>
 </html>

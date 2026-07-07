@@ -15,7 +15,7 @@ import re
 import sys
 import json
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -68,6 +68,12 @@ def bucket_of(score):
 @app.get("/health")
 def health():
     return jsonify(ok=True)
+
+
+@app.get("/")
+def home():
+    """網頁版面板（web/index.html 支援 ?sid= 直開個股，供 tw-market-map 等外部連結）。"""
+    return send_file(os.path.join(HERE, "web", "index.html"))
 
 
 @app.get("/ohlc")
