@@ -95,7 +95,7 @@ def _guard(t):
     status: ok / low_sample / unvalidated / overfit / no_edge"""
     val = t.get("val") or {}
     tr = t.get("train") or {}
-    nv, nt = val.get("n", 0), tr.get("n", 0)
+    nv = val.get("n", 0)
     if t.get("n", 0) < MIN_SAMPLE:
         return "low_sample", "樣本不足，不給勝率"
     if nv == 0:

@@ -17,7 +17,6 @@ CLI：
 import argparse
 import json
 import os
-import sys
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))

@@ -12,7 +12,7 @@ import ssl
 import json
 import time
 import urllib.request
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 TW_TZ = timezone(timedelta(hours=8))
 HERE = os.path.dirname(os.path.abspath(__file__))

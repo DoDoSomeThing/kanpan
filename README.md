@@ -35,28 +35,55 @@ Position:  60日區間 72.1%
 ============================
 ```
 
+## 判讀輸出（皆為描述，非建議）
+
+- **判讀燈號**（`verdict`）：綜合結構/動能/量價/共識 → 強多頭/多頭有利/方向待定/偏弱/偏空轉弱。
+  **信心綁回測勝率**（research/verdict_stats.json）——沒數字不喊信心。
+- **A–G 七行**（`evolution`）：進場評估七要點；B/C/G 為日 K 近似（無盤中 tick，誠實標示）。
+- **V3 趨勢燈**：每檔 always-on 的趨勢通道判定（終端機/api/擴充全通道）。
+- **乖離率**（月線 MA20/季線 MA60）：過大（≥25%）扣分並擋「強多頭」，防追高接刀。
+- 盤中（9:00–13:30）自動抓 TWSE MIS 即時價，量能/CCP/乖離同步即時；擴充每 20 秒自動重抓。
+
 ## 結構（自含，不依賴其他專案）
 
 ```
-core.py                  指標 + 四區塊 + VP Score（純函式，無 I/O 副作用）
+core.py                  指標 + 四區塊 + VP Score + 判讀燈號 + A–G + 乖離（純函式，無 I/O 副作用）
 panel.py                 CLI 面板：python panel.py 2330
-api.py                   本機後端(8771)：給 Chrome 擴充用，盤中自動套即時價
+api.py                   本機後端(8771)：Chrome 擴充 / 網頁版共用；GET / 直開網頁面板（支援 ?sid=）
 live.py                  台股盤中即時價（TWSE MIS，9:00-13:30）
+inst.py                  三大法人（TWSE T86 / TPEx，自抓自 cache，不依賴外部專案）
+rank.py                  全市場分數排行（分布 + 高分清單；高分=描述，不是買訊）
 extension/               Chrome 擴充：TradingView 開台股 → 右側真分割面板
-research/score_history.py  歷史驗證：對 2021-2024 全市場 37.5 萬樣本分桶統計
+web/                     網頁版面板（api.py 起服務後瀏覽器直開）
+pine/                    TradingView Pine 指標（kanpan_vp.pine 劃線+燈號+A–G table）
+                         Pine 在 TV 沙盒抓不到法人/回測 → 分工：Pine 畫圖，擴充補數據
+
+── 風控 / 紀律層（只警示，不下指令）──
+position.py              L3 持倉風控：trail 出場（−4% 硬停損 / 高點回落 8%）+ 同期 0050 對照
+portfolio.py             組合層：累計超額 α vs 0050、相關係數、曝險
+behavior.py              行為守門：追高 / 凹單 / 頻率警示
+playbook.py              L2 劇本引擎:三個固定模板+回測防呆（低樣本/未驗證/過擬合/無 edge 全擋）
+reason.py                理由卡：買前寫「為什麼買 + 什麼情況算理由死了」，每天自動 check
+review.py                交易檢討：平倉紀錄的樣本外體檢（anti-gambling-trader 方法論）
+
+── 資料 / 驗證 ──
 data/fetch_data.py       下載資料（大檔不進 git，放 GitHub Release）
+research/                歷史驗證腳本 + 統計快取（score/verdict/playbook/法人/指數擇時）
+                         含「回測協議_別自欺.md」：驗證前先讀
 ```
 
 ## 快速開始
 
 ```bash
-python data/fetch_data.py cache   # 近期日K（面板用）
+python data/fetch_data.py cache   # 近期日K（面板用；日常缺當日資料會自動即時補抓）
 python panel.py 2330              # CLI 看面板
 
-# TradingView 面板：
+# 網頁版 / TradingView 面板：
 python api.py                     # 起本機後端 8771
-# Chrome → chrome://extensions → 開發人員模式 → 載入未封裝 → 選 extension/
-# 開 tw.tradingview.com 任一台股 → 右側 kanpan 面板（盤中顯示「● 即時」）
+# 網頁版：瀏覽器開 http://127.0.0.1:8771/?sid=2330
+# 擴充：Chrome → chrome://extensions → 開發人員模式 → 載入未封裝 → 選 extension/
+#   開 tw.tradingview.com 任一台股 → 右側 kanpan 面板（盤中顯示「● 即時」）
+# Windows：雙擊 kanpan後端.bat / 複製Pine.bat
 
 # （可選）重建歷史統計：
 python data/fetch_data.py deep    # 80MB 深歷史K

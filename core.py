@@ -1058,7 +1058,6 @@ def comment(p: dict) -> str:
     """規則式評語：描述狀態，不給買賣建議。"""
     lines = []
     st = p["structure"]
-    t = p["trend_score"]
     if st == "主升段":
         lines.append("趨勢結構完整，處於主升段。")
     elif st == "多頭修正":
