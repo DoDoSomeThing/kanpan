@@ -1,0 +1,72 @@
+//@version=6
+// Fib 回撤進場 strategy(個股回測用)
+// 用 pivot 真轉折抓上升腿(低→高),價回撤到 0.5~0.618 區進場,停損破波段低、目標前波高。
+// 無 repaint:pivot 用 pvR 右腳確認(延遲 pvR 根才成立,不偷看未來)。真實成本;日期分段。
+strategy("Justin Fib 回撤進場", overlay=true, initial_capital=1000000,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=100,
+     commission_type=strategy.commission.percent, commission_value=0.2,
+     slippage=2, process_orders_on_close=false, calc_on_every_tick=false,
+     max_bars_back=500)
+
+// ===== 參數 =====
+pvL    = input.int(10, "Pivot 左腳", minval=2, group="波段")
+pvR    = input.int(10, "Pivot 右腳", minval=2, group="波段")
+fibDeep= input.float(0.618, "進場區下緣(深)", minval=0.3, maxval=0.9, group="進場")
+fibShal= input.float(0.5,   "進場區上緣(淺)", minval=0.2, maxval=0.8, group="進場")
+stopBuf= input.float(1.0, "停損緩衝%(破波段低)", minval=0.0, step=0.5, group="出場")
+useTgt = input.bool(true, "目標=前波高", group="出場")
+
+// ===== 日期分段 =====
+startT = input.time(timestamp("2021-01-01"), "回測起", group="期間")
+endT   = input.time(timestamp("2026-12-31"), "回測迄", group="期間")
+inRange = time >= startT and time <= endT
+
+// ===== Pivot 抓波段 =====
+ph = ta.pivothigh(high, pvL, pvR)
+pl = ta.pivotlow(low, pvL, pvR)
+var float swLo = na
+var int   swLoBar = na
+var float swHi = na
+var int   swHiBar = na
+if not na(pl)
+    swLo := pl
+    swLoBar := bar_index - pvR
+if not na(ph)
+    swHi := ph
+    swHiBar := bar_index - pvR
+
+// 有效上升腿:低在前、高在後、高>低
+upleg = not na(swLo) and not na(swHi) and swHiBar > swLoBar and swHi > swLo
+rng   = upleg ? (swHi - swLo) : na
+fibLo = upleg ? swHi - rng * fibDeep : na    // 0.618 retr(較低價)
+fibHi = upleg ? swHi - rng * fibShal : na    // 0.5 retr(較高價)
+
+// 一腿只進一次(用 swHiBar 當腿 id)
+var int lastLeg = na
+inZone  = upleg and low <= fibHi and close >= fibLo and close > swLo
+canEnter = inRange and inZone and strategy.position_size == 0 and (na(lastLeg) or lastLeg != swHiBar)
+
+// 進場當下鎖定停損/目標(持倉中出現新 pivot 也不漂移;停損下移=風險無上限化)
+var float entryStop = na
+var float entryTgt  = na
+
+if canEnter
+    strategy.entry("L", strategy.long)
+    lastLeg := swHiBar
+    entryStop := swLo * (1 - stopBuf / 100)
+    entryTgt  := swHi
+
+if strategy.position_size > 0
+    if useTgt
+        strategy.exit("X", "L", stop=entryStop, limit=entryTgt)
+    else
+        strategy.exit("X", "L", stop=entryStop)
+
+if not inRange and strategy.position_size > 0
+    strategy.close("L", comment="期末平倉")
+
+// ===== 視覺 =====
+plot(fibLo, "fib深(0.618)", color.new(color.green, 0))
+plot(fibHi, "fib淺(0.5)",   color.new(color.olive, 0))
+plot(upleg ? swHi : na, "波段高", color.new(color.red, 0), style=plot.style_circles)
+plot(upleg ? swLo : na, "波段低", color.new(color.blue, 0), style=plot.style_circles)

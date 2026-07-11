@@ -1,0 +1,56 @@
+//@version=6
+// 均值回歸 strategy(個股回測用)
+// 進場:RSI 超賣 + (選)長多頭濾網(close>MA長)避免接刀
+// 出場:RSI 回升 / 回中軸 MA / 硬停損 / 持有上限
+// 無 repaint:已收盤訊號;真實成本;日期分段。
+strategy("Justin 均值回歸", overlay=true, initial_capital=1000000,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=100,
+     commission_type=strategy.commission.percent, commission_value=0.2,
+     slippage=2, process_orders_on_close=false, calc_on_every_tick=false)
+
+// ===== 參數 =====
+rsiLen   = input.int(14, "RSI 長度", minval=2, group="進場")
+rsiBuy   = input.float(30, "RSI 超賣進場 <", minval=5, maxval=50, group="進場")
+useFilt  = input.bool(true, "需長多頭(close>MA長)才進", group="進場")
+filtLen  = input.int(120, "長多頭濾網 MA", minval=20, group="進場")
+rsiExit  = input.float(55, "RSI 回升出場 >", minval=40, maxval=90, group="出場")
+useMidEx = input.bool(true, "回中軸 MA20 也出", group="出場")
+hardStop = input.float(6.0, "硬停損 %", minval=0.5, step=0.5, group="出場")
+maxHold  = input.int(20, "持有上限(日)0=不限", minval=0, group="出場")
+
+// ===== 日期分段 =====
+startT = input.time(timestamp("2021-01-01"), "回測起", group="期間")
+endT   = input.time(timestamp("2026-12-31"), "回測迄", group="期間")
+inRange = time >= startT and time <= endT
+
+// ===== 指標 =====
+rsi  = ta.rsi(close, rsiLen)
+maL  = ta.sma(close, filtLen)
+ma20 = ta.sma(close, 20)
+filtOK = not useFilt or (close > maL)
+longSig = inRange and rsi < rsiBuy and filtOK
+
+// ===== 進場 =====
+if longSig and strategy.position_size == 0
+    strategy.entry("L", strategy.long)
+
+// ===== 出場 =====
+var int barsIn = 0
+if strategy.position_size > 0
+    barsIn += 1
+    stopLv = strategy.position_avg_price * (1 - hardStop / 100)
+    strategy.exit("Stop", "L", stop=stopLv)
+    exitRSI = rsi > rsiExit
+    exitMid = useMidEx and close > ma20
+    exitTime = maxHold > 0 and barsIn >= maxHold
+    if exitRSI or exitMid or exitTime
+        strategy.close("L", comment="訊號出")
+else
+    barsIn := 0
+
+if not inRange and strategy.position_size > 0
+    strategy.close("L", comment="期末平倉")
+
+// ===== 視覺 =====
+plot(ma20, "MA20", color.new(color.orange, 0))
+plot(useFilt ? maL : na, "MA濾網", color.new(color.blue, 0))

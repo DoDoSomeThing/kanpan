@@ -1,0 +1,52 @@
+//@version=6
+// 趨勢跟隨 + 移動停利 strategy(個股回測用)
+// 進場:站上 MA(fast) 且 多排(fast>slow) 且 突破前 N 日高
+// 出場:初始硬停損 + 高點回落移動停利(trail)— trail 是 tw-stock-bot 唯一驗到的真 edge
+// 無 repaint:訊號用已收盤 bar,單next bar 成交;含真實成本。日期分段給樣本內/外。
+strategy("Justin 趨勢跟隨+移動停利", overlay=true, initial_capital=1000000,
+     default_qty_type=strategy.percent_of_equity, default_qty_value=100,
+     commission_type=strategy.commission.percent, commission_value=0.2,
+     slippage=2, process_orders_on_close=false, calc_on_every_tick=false)
+
+// ===== 參數(可調 → 拿來做 sweep 穩健性測) =====
+fastLen  = input.int(20, "快均線 MA", minval=2, group="進場")
+slowLen  = input.int(60, "慢均線 MA", minval=5, group="進場")
+brkLen   = input.int(20, "突破前 N 日高", minval=2, group="進場")
+useTrend = input.bool(true, "需多排(fast>slow)才進", group="進場")
+initStop = input.float(4.0, "初始硬停損 %", minval=0.5, step=0.5, group="出場")
+trailPct = input.float(8.0, "高點回落停利 %", minval=1.0, step=0.5, group="出場")
+
+// ===== 日期分段(樣本內/外) =====
+startT = input.time(timestamp("2021-01-01"), "回測起", group="期間")
+endT   = input.time(timestamp("2026-12-31"), "回測迄", group="期間")
+inRange = time >= startT and time <= endT
+
+// ===== 指標 =====
+maF = ta.sma(close, fastLen)
+maS = ta.sma(close, slowLen)
+hiN = ta.highest(high, brkLen)[1]            // 前 N 日高(不含當根,避免未來函數)
+trendOK = not useTrend or (maF > maS)
+longSig = inRange and close > maF and trendOK and close > hiN
+
+// ===== 進場 =====
+if longSig and strategy.position_size == 0
+    strategy.entry("L", strategy.long)
+
+// ===== 移動停利:峰值追蹤(進場後最高),停損 = max(硬停損, 峰值×(1-trail%)) =====
+var float peak = na
+if strategy.position_size > 0
+    peak := na(peak) ? high : math.max(peak, high)
+    hardStop = strategy.position_avg_price * (1 - initStop / 100)
+    trailStop = peak * (1 - trailPct / 100)
+    stopLv = math.max(hardStop, trailStop)
+    strategy.exit("X", "L", stop=stopLv)
+else
+    peak := na
+
+// 出場後/無倉強制平(超出回測期)
+if not inRange and strategy.position_size > 0
+    strategy.close("L", comment="期末平倉")
+
+// ===== 視覺 =====
+plot(maF, "MA fast", color.new(color.orange, 0))
+plot(maS, "MA slow", color.new(color.blue, 0))
